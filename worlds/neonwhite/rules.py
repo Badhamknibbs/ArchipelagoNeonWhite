@@ -3,6 +3,7 @@ import itertools
 from enum import IntEnum, IntFlag, auto
 from math import floor
 
+from . import data
 from BaseClasses import MultiWorld, CollectionState
 from worlds.AutoWorld import World
 from worlds.generic.Rules import set_rule, add_rule
@@ -124,10 +125,10 @@ def string_to_level_req_flag(level: str) -> LevelRequirements:
             # Unexpected symbol/fist only
             return LevelRequirements.FistOnly
 
-
 def import_csv_to_data(diff: Difficulty) -> LevelRequirementSet:
     # See archipelago requirements sheet for formatting
-    file = open('./nw_cr.csv')
+    from importlib.resources import files
+    file = files(data).joinpath("nw_cr.csv").open()
     csv_reader = csv.reader(file)
     csv_iter = iter(csv_reader)
     # Grab names, cells are merged and encompass the 4 difficulties so only take every multiple of 4
@@ -144,7 +145,7 @@ def import_csv_to_data(diff: Difficulty) -> LevelRequirementSet:
                     new_requirements.requirements[level_name][diff_idx] |= new_requirements.requirements[level_name][j]
             # Copy requirements from all easier difficulties
             # Requirements are checked as a "can beat x with these weapons?" so this works
-            for j in range(0, diff + 1):
+            for j in range(0, diff):
                 cell = row[(i * 4) + j]
                 # F means fist completable, no requirements
                 if cell == "F":
@@ -193,38 +194,33 @@ def get_required_rank_for_mission(total_rank_count: int, mission:int):
     # Until the final mission which requires ~90% of the total to be collected
     return floor(total_rank_count / (12 - mission)) - floor(total_rank_count / 12)
 
-
 def set_rules(multiworld: MultiWorld, world: World, options: NeonWhiteOptions, total_rank_count:int):
     requirements = import_csv_to_data(options.difficulty)
 
     if not world.ordered_levels:
         world.ordered_levels = level_rando(world, requirements)
-    ordered_levels = world.ordered_levels
-
-    if not world.level_map:
-        levels_map = dict(zip(itertools.chain(neon_white_levels_normal, neon_white_levels_giftless, neon_white_levels_sidequests), level_rando(world, requirements)))
-        world.level_map = levels_map
-    else:
-        levels_map = world.level_map
 
     central_heaven = multiworld.get_region("Central Heaven", world.player)
-    # Connect central heaven to every chapter
+    # Connect central heaven to every mission
     for i in range(1, 12):
-        chapter_region = multiworld.get_region(f"Chapter {i}", world.player)
-        entrance_name = f"Central Heaven to Chapter {i}"
-        central_heaven.connect(chapter_region, entrance_name)
+        mission_region = multiworld.get_region(f"Mission {i}", world.player)
+        entrance_name = f"Central Heaven to Mission {i}"
+        central_heaven.connect(mission_region, entrance_name)
         if i != 1:
             required_neon_rank_count = get_required_rank_for_mission(total_rank_count, i)
             add_rule(multiworld.get_entrance(entrance_name, world.player), lambda state: state.has("Neon Rank", world.player, required_neon_rank_count))
 
-        # Connect each chapter to the levels they contain
+        # Connect each mission to the levels they contain
         for j in range(11):
-            level_name = levels_map[((i - 1) * 11) + j]
-            chapter_region.connect(multiworld.get_region(level_name, world.player), f"{chapter_region.name} to {level_name}")
-            if neon_white_levels_normal.contains(level_name):
+            level_name = world.ordered_levels[((i - 1) * 11) + j]
+            mission_region.connect(multiworld.get_region(level_name, world.player), f"{mission_region.name} to {level_name}")
+            if level_name in neon_white_levels_normal:
                 set_rule(multiworld.get_location(level_name + " Completion", world.player), lambda state: can_complete_medal(state, world.player, requirements.get_necessary_items(level_name, Medal.Gold)))
                 set_rule(multiworld.get_location(level_name + " Gift", world.player), lambda state: can_complete_medal(state, world.player, requirements.get_necessary_items(level_name, Medal.Gift)))
             else:
                 set_rule(multiworld.get_location(level_name + " Completion", world.player), lambda state: can_complete_medal(state, world.player, requirements.get_necessary_items(level_name, Medal.Dev)))
 
     multiworld.completion_condition[world.player] = lambda state: state.has("Absolution Completion", world.player)
+
+    from Utils import visualize_regions
+    visualize_regions(central_heaven, "neon_white_regions.puml")

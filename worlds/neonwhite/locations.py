@@ -275,7 +275,7 @@ def neon_white_level_name_internal(level: str) -> str:
 def neon_white_get_locations() -> dict[str, int]:
     locations_dict: dict[str, int] = {}
     level_id = 500
-    for level in neon_white_levels_sidequests:
+    for level in neon_white_levels_normal:
         locations_dict[level + " Completion"] = level_id
         level_id += 1
         locations_dict[level + " Gift"] = level_id

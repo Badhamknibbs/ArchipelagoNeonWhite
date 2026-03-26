@@ -53,6 +53,8 @@ class NeonWhiteWorld(World):
         if not self.player_name.isascii():
             raise Exception("Neon White yaml's slot name has invalid character(s).")
 
+        self.ordered_levels = []
+
     def create_item(self, name: str) -> NWItem:
         return NWItem(name, nw_items[name].classification, nw_items[name].id, self.player)
 
