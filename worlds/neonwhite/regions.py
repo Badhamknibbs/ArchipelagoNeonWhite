@@ -33,14 +33,14 @@ def create_regions(player: int, multiworld: MultiWorld, options: NeonWhiteOption
         check_region = Region(level, player, multiworld, None)
         for check in neon_white_levels_checks:
             check_name = level + " " + check
-            new_location = NWLocation(player, check_name, neon_white_locations[check_name], None)
+            new_location = NWLocation(player, check_name, neon_white_locations[check_name], check_region)
             check_region.locations.append(new_location)
         heaven_regions.append(check_region)
 
     for level in itertools.chain(neon_white_levels_giftless, neon_white_levels_sidequests):
         check_region = Region(level, player, multiworld, None)
         check_name = level + " Completion"
-        new_location = NWLocation(player, check_name, neon_white_locations[check_name], None)
+        new_location = NWLocation(player, check_name, neon_white_locations[check_name], check_region)
         check_region.locations.append(new_location)
         heaven_regions.append(check_region)
 

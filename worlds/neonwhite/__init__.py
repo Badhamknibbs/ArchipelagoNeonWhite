@@ -1,6 +1,6 @@
 from worlds.AutoWorld import World, WebWorld
 from BaseClasses import Tutorial
-from .items import NWItem, nw_items, get_item_from_category, nw_item_groups
+from .items import NWItem, nw_items, get_items_from_category, nw_item_groups
 from .locations import neon_white_get_locations, checks_in_sets_lvl, neon_white_level_name_internal
 #from .Locations import PTLocation, pt_locations, pt_location_groups
 from .options import NeonWhiteOptions
@@ -67,13 +67,13 @@ class NeonWhiteWorld(World):
         locations_to_fill = len(self.multiworld.get_unfilled_locations(self.player))
 
         # Add soul cards
-        for card in get_item_from_category("Card"):
+        for card in get_items_from_category("Card"):
             neon_white_itempool.append(self.create_item(card))
             locations_to_fill = locations_to_fill - 1 # Added an item
 
-        for i in range(locations_to_fill - len(neon_white_itempool)):
+        for i in range(locations_to_fill):
             # 1/100 items added for filler will be a miracle katana, the rest will be neon rank increments
-            if self.multiworld.random.randint(0, 99) == 0:
+            if i + 1 % 100 == 0:
                 neon_white_itempool.append(self.create_item("Miracle Katana"))
             else:
                 neon_white_itempool.append(self.create_item("Neon Rank"))

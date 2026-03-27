@@ -10,6 +10,7 @@ from worlds.generic.Rules import set_rule, add_rule
 from worlds.neonwhite import NeonWhiteOptions
 from worlds.neonwhite.locations import neon_white_levels_giftless, neon_white_levels_normal, \
     neon_white_levels_sidequests
+from .items import get_items_from_category
 
 
 class Difficulty(IntEnum):
@@ -87,6 +88,7 @@ class LevelRequirementSet:
             if solution & LevelRequirements.DominionFire: solution_cards.append("Dominion - Fire")
             if solution & LevelRequirements.DominionDiscard: solution_cards.append("Dominion - Discard")
             if solution & LevelRequirements.BookOfLife: solution_cards.append("Book of Life")
+            required_cards.append(solution_cards)
         return required_cards
 
 
@@ -162,15 +164,16 @@ def import_csv_to_data(diff: Difficulty) -> LevelRequirementSet:
 
 # Actual functions related to rules start here
 def level_rando(world: World, requirements: LevelRequirementSet) -> list[str]:
+    # TODO: Make this smarter, e.g. fill levels on a gradient from smallest minimum requirement to most
     rando_level_order = []
 
     level_queue = neon_white_levels_normal + neon_white_levels_giftless + neon_white_levels_sidequests
     level_queue.remove("Absolution") # This will always be placed at the end
 
-    # Place 2 levels where the gift or gold medal can be obtained Fist-Only
+    # Place 2 levels where the gift and gold medal can be obtained Fist-Only at the very start
     fist_only_levels = []
     for level in level_queue:
-        if requirements.can_complete_level(level, Medal.Gold, LevelRequirements.FistOnly) or requirements.can_complete_level(level, Medal.Gift, LevelRequirements.FistOnly):
+        if requirements.can_complete_level(level, Medal.Gold, LevelRequirements.FistOnly) and requirements.can_complete_level(level, Medal.Gift, LevelRequirements.FistOnly):
             fist_only_levels.append(level)
     world.random.shuffle(fist_only_levels)
     for i in range(2):
@@ -184,21 +187,39 @@ def level_rando(world: World, requirements: LevelRequirementSet) -> list[str]:
     return rando_level_order
 
 def can_complete_medal(state: CollectionState, player:int, requirements:list[list[str]]):
+    if not requirements: return True # No requirements, technically unexpected but catches odd cases
     for solution in requirements:
         if state.has_all(solution, player): return True
     return False
 
 # Mission is zero-indexed
-def get_required_rank_for_mission(total_rank_count: int, mission:int):
-    # Neon rank requirement is kinda-exponential, the gap increasing for each rank
-    # Until the final mission which requires ~90% of the total to be collected
-    return floor(total_rank_count / (12 - mission)) - floor(total_rank_count / 12)
+def get_required_rank_for_mission(total_rank_count: int, mission:int) -> int:
+    # TODO: Figure out a nice formula, for now to fix fill issues just make it super easy
+    return mission
+    # Neon rank requirement is exponential, requiring a tiny number of neon ranks for the first missions but quickly increasing
+    mission_fraction = mission / 11
+    lenience_value = 10
+    normal_value = (pow(lenience_value, mission_fraction) - 1) / (lenience_value - 1)
+    return floor(total_rank_count * normal_value)
 
 def set_rules(multiworld: MultiWorld, world: World, options: NeonWhiteOptions, total_rank_count:int):
     requirements = import_csv_to_data(options.difficulty)
 
     if not world.ordered_levels:
         world.ordered_levels = level_rando(world, requirements)
+
+    # Place half of the relevant discard abilities into the early items pool to alleviate fill errors
+    # TODO find a nice balance, temporarily use all to make generation easy
+    relevant_discards: set[str] = set()
+    for i in range(12):
+        for solution in itertools.chain(requirements.get_necessary_items(world.ordered_levels[i], Medal.Gold), requirements.get_necessary_items(world.ordered_levels[i], Medal.Gift)):
+            for card in solution:
+                if "Discard" in card or "Book of Life" in card:
+                    relevant_discards.add(card)
+    relevant_discards_list = list(relevant_discards)
+    world.random.shuffle(relevant_discards_list)
+    for i in range(floor(len(relevant_discards_list) / 1)):
+        multiworld.local_early_items[world.player][relevant_discards_list[i]] = 1
 
     central_heaven = multiworld.get_region("Central Heaven", world.player)
     # Connect central heaven to every mission
