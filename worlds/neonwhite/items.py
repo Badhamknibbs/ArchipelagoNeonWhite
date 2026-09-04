@@ -42,7 +42,7 @@ nw_items: dict[str, NWItemData] = {
     "Dominion - Discard":   NWItemData("Card", NWItem.card_id + 14, NWItem.card_classification),
 
     "Neon Rank":            NWItemData("Progression", NWItem.prog_id + 0,
-        ItemClassification.progression_deprioritized_skip_balancing),
+        ItemClassification.progression_skip_balancing),
     "Mission Unlock":       NWItemData("Progression", NWItem.prog_id + 1,
         ItemClassification.progression),
 

@@ -1,9 +1,9 @@
 import itertools
 import json
+import statistics
 from enum import IntEnum, IntFlag, auto
 from math import floor
-import statistics
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, final, override
 
 from BaseClasses import MultiWorld
 from rule_builder.rules import False_, Has, HasAll, True_
@@ -16,7 +16,11 @@ from .locations import (
     neon_white_levels_normal,
     neon_white_levels_sidequests,
 )
-from .options import ExecutionDifficulty, KnowledgeDifficulty, MedalCap, MissionUnlockMethod
+from .options import (
+    ExecutionDifficulty,
+    KnowledgeDifficulty,
+    MissionUnlockMethod,
+)
 from .regions import neon_white_missions, neon_white_missions_sq
 
 if TYPE_CHECKING:
@@ -32,18 +36,12 @@ class Medal(IntEnum):
     Dev = 4
     Gift = 5
 
-# ruff: disable[E701]
-# fmt: off
-def medal_from_medal_cap(medal_cap: MedalCap) -> Medal:
-    match int(medal_cap):
-        case 1: return Medal.Bronze
-        case 2: return Medal.Silver
-        case 3: return Medal.Gold
-        case 4: return Medal.Ace
-        case 5: return Medal.Dev
-        case _: return Medal.Bronze
-# ruff: enable[E701]
-# fmt: on
+    @classmethod
+    @override
+    def _missing_(cls, value):
+        if isinstance(value, str) and value.title() in cls.__members__:
+            return cls.__members__[value]
+        return super()._missing_(value)
 
 class LevelRequirements(IntFlag):
     FistOnly = 0
@@ -111,13 +109,12 @@ class LevelRequirements(IntFlag):
 
     # a copy of c#'s
     def has_flags(self, other: "LevelRequirements") -> bool:
-        if self & other == self:
-            return True
-        return False
+        return self & other == self
 
 
 
 # This only represents a single difficulty
+@final
 class LevelRequirementSet:
     # String is the level name, list is 0..5, in order: dev,ace,gold,silver,bronze,gift
     requirements = dict[str, list[set[LevelRequirements]]]()  # noqa: RUF012
@@ -151,10 +148,8 @@ class LevelRequirementSet:
         return self.requirements[level][medal_idx]
 
 
-def import_json_to_data(know_diff: KnowledgeDifficulty, exec_diff: ExecutionDifficulty,
-        medal_cap: Medal) -> LevelRequirementSet:
+def import_json_to_data(know_diff: KnowledgeDifficulty, exec_diff: ExecutionDifficulty) -> LevelRequirementSet:
 
-    capint = int(medal_cap) if medal_cap == Medal.Gift else 4 - int(medal_cap)
     # See archipelago requirements sheet for formatting
     from importlib.resources import files
     file = files(data).joinpath("nw_cr.json").open()
@@ -163,7 +158,7 @@ def import_json_to_data(know_diff: KnowledgeDifficulty, exec_diff: ExecutionDiff
     for entry in json_data:
         solutions = [set[LevelRequirements]() for _ in range(6)]
         for solution in json_data[entry]:
-            capped = max(solution["m"], capint)
+            capped: int = solution["m"]
             if LevelRequirements.FistOnly in solutions[capped]:
                 continue # don't even bother
 
@@ -199,17 +194,17 @@ def level_rando(world: "NeonWhiteWorld") -> list[str]:
     level_queue = [x for x in level_queue if x not in world.early_levels]
 
     # Solve weights for weighted shuffle
-    level_reqs = [world.requirements.requirements[x] for x in level_queue]
+    level_reqs = [world.requirement.requirements[x] for x in level_queue]
     weights = [statistics.mean(
             statistics.mean(
                 req.count + 1 for req in reqs
             ) for reqs in medal_reqs if reqs
         ) for medal_reqs in level_reqs]
 
-    variance = world.options.level_gradient / 100
+    variance: float = world.options.level_gradient / 100
 
     # https://softwareengineering.stackexchange.com/a/344274
-    def weighted_shuffle(items):
+    def weighted_shuffle(items: list[str]):
         norm = [x / max(weights) for x in weights]
         v = [norm[i] + variance * (world.random.random() - norm[i]) for i in range(len(items))]
         order = sorted(range(len(items)), key=lambda i: v[i])
@@ -232,13 +227,13 @@ def get_mission_rank_required(world: "NeonWhiteWorld", mission: int) -> int:
     #       divide it by mission count and multiply the equation by rank total (floor fractions)
     #    E.g. 11 missions, 343 total ranks:
     #    y = ((v^((x-1) / 11) - 1) / (v - 1)) * 343
-    mission_fraction = mission / world.options.mission_count
+    mission_fraction: float = mission / world.options.mission_count
     lenience_value = 10 # How sharp the curve is, higher = slower rank req but sharper spike near the end
     normal_value = (pow(lenience_value, mission_fraction) - 1) / (lenience_value - 1)
     return floor(world.ranks_required * normal_value)
 
 def set_rules(multiworld: MultiWorld, world: "NeonWhiteWorld", options: NeonWhiteOptions):
-    medal_cap_typed = medal_from_medal_cap(options.medal_cap)
+    medals = [Medal(x) for x in options.medal_select]
 
     if not world.ordered_levels:
         world.ordered_levels = level_rando(world)
@@ -261,8 +256,8 @@ def set_rules(multiworld: MultiWorld, world: "NeonWhiteWorld", options: NeonWhit
     relevant_discards: set[str] = set()
     for level in world.ordered_levels:
         itercombo = itertools.chain(
-            world.requirements.get_necessary_items(level, medal_cap_typed),
-            world.requirements.get_necessary_items(level, Medal.Gift))
+            world.requirement.get_necessary_items(level, max(medals, default=Medal.Bronze)),
+            world.requirement.get_necessary_items(level, Medal.Gift))
         for solution in itercombo:
             for card in solution:
                 cardstr = LevelRequirements.solo_to_string(card)
@@ -284,7 +279,7 @@ def set_rules(multiworld: MultiWorld, world: "NeonWhiteWorld", options: NeonWhit
         entrance_name = f"Central Heaven to {mission_region.name}"
         entrance = central_heaven.connect(mission_region, entrance_name)
         if i != 0:
-            match options.unlock_method:
+            match options.unlock_method:  # pyright: ignore[reportMatchNotExhaustive]
                 case MissionUnlockMethod.option_missions:
                     world.set_rule(entrance, Has("Mission Unlock", i))
                 case MissionUnlockMethod.option_ranks:
@@ -303,21 +298,21 @@ def set_rules(multiworld: MultiWorld, world: "NeonWhiteWorld", options: NeonWhit
             level_name = world.ordered_levels[level_total]
             level_total += 1
 
-            mission_region.connect(world.get_region("Level: " + level_name),
+            _ = mission_region.connect(world.get_region("Level: " + level_name),
                 f"{mission_region.name} to {level_name}",
                 Has(level_name) if world.options.unlock_method == MissionUnlockMethod.option_levels else None)
             if level_name in neon_white_levels_normal or level_name in neon_white_levels_giftless:
-                for medal in range(options.medal_cap):
-                    world.set_rule(world.get_location(f"{level_name} {neon_white_levels_medals[medal]} Completion"),
-                        world.requirements.make_rule(level_name, Medal(medal)))
+                for medal in medals:
+                    world.set_rule(world.get_location(f"{level_name} {medal.name} Completion"),
+                        world.requirement.make_rule(level_name, Medal(medal)))
 
                 if level_name not in neon_white_levels_giftless and world.options.gifts:
                     world.set_rule(world.get_location(level_name + " Gift"),
-                        world.requirements.make_rule(level_name, Medal.Gift))
+                        world.requirement.make_rule(level_name, Medal.Gift))
 
             else:
                 world.set_rule(world.get_location(level_name + " Completion"),
-                    world.requirements.make_rule(level_name, medal_cap_typed))
+                    world.requirement.make_rule(level_name, max(medals, default=Medal.Bronze)))
 
     from Utils import visualize_regions
     visualize_regions(central_heaven, "neon_white_regions.puml")

@@ -48,30 +48,20 @@ def create_regions(player: int, multiworld: MultiWorld, options: NeonWhiteOption
     # Create regions and add locations
     heaven_regions.extend([Region(mission, player, multiworld) for mission in mission_list])
 
-    for level in neon_white_levels_normal:
+    for level in neon_white_levels_normal + neon_white_levels_giftless:
         check_region = Region("Level: " + level, player, multiworld)
-        for medal in range(options.medal_cap):
-            check_name = level + " " + neon_white_levels_medals[medal] + " Completion"
+        for medal in options.medal_select:
+            check_name: str = level + " " + medal.title() + " Completion"
             new_location = NWLocation(player, check_name, neon_white_locations[check_name], check_region)
             # Make the highest medal a priority location
             #if medal == options.medal_cap - 1: new_location.progress_type = LocationProgressType.PRIORITY
             check_region.locations.append(new_location)
-        if options.gifts:
+        if options.gifts and level not in neon_white_levels_giftless:
             check_name = level + " Gift"
             new_location = NWLocation(player, check_name, neon_white_locations[check_name], check_region)
             #new_location.progress_type = LocationProgressType.PRIORITY
             check_region.locations.append(new_location)
 
-        heaven_regions.append(check_region)
-
-    for level in neon_white_levels_giftless:
-        check_region = Region("Level: " + level, player, multiworld)
-        for medal in range(options.medal_cap):
-            check_name = level + " " + neon_white_levels_medals[medal] + " Completion"
-            new_location = NWLocation(player, check_name, neon_white_locations[check_name], check_region)
-            # Make the highest medal a priority location
-            #if medal == options.medal_cap - 1: new_location.progress_type = LocationProgressType.PRIORITY
-            check_region.locations.append(new_location)
         heaven_regions.append(check_region)
 
     if options.sidequests:

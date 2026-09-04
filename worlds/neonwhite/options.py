@@ -1,6 +1,19 @@
+# pyright: reportUnannotatedClassAttribute=false
+
 from dataclasses import dataclass
 
-from Options import Choice, DeathLink, DefaultOnToggle, PerGameCommonOptions, Range, StartInventoryPool, Toggle
+from Options import (
+    Choice,
+    DeathLink,
+    DefaultOnToggle,
+    OptionSet,
+    PerGameCommonOptions,
+    Range,
+    StartInventoryPool,
+    Toggle,
+)
+
+from .locations import neon_white_levels_medals
 
 
 class KnowledgeDifficulty(Choice):
@@ -77,35 +90,43 @@ class StartingLevelCount(Range):
     default = 5
     range_end = 10
 
-class MedalCap(Choice):
+class MedalSelect(OptionSet):
     """
-    The highest medal to count for checks.
-    Higher settings will result in more checks if Progressive Checks is enabled.
+    Which medals to have as checks.
+    Format as a comma-separated list of medal names: ["Bronze", "Ace"].
+    Medals available are: Bronze, Silver, Gold, Ace, and Dev. Case-insensitive.
     """
-    display_name = "Medal Cap"
-    option_bronze = 1
-    option_silver = 2
-    option_gold = 3
-    option_ace = 4
-    option_dev = 5
-    default = 4
+    display_name = "Medal Selection"
+    valid_keys = (x.casefold() for x in neon_white_levels_medals)
+    valid_keys_casefold = True
+    default = {"Bronze", "Gold"}
 
-class RankRequirement(Range):
+class TotalRanks(Range):
     """
-    The percentage of ranks required for the final mission out of the total amount of remaining checks in the pool.
+    How many total Neon Ranks to add to the pool.
+    Only applies when Mission Unlock Method is set to Ranks.
+    """
+    display_name = "Total Neon Ranks"
+    range_start = 1
+    default = 100
+    range_end = 300
+
+class RanksRequiredPercentage(Range):
+    """
+    Percentage of existing Neon Ranks required to open the last mission.
     The rest of the mission requirements will scale accordingly.
     Only applies when Mission Unlock Method is set to Ranks.
     """
-    display_name = "Rank Requirement"
+    display_name = "Ranks Required Percentage"
     range_start = 1
-    default = 30
+    default = 80
     range_end = 100
 
 
 class MissionCount(Range):
     """
     The amount of Missions for the game to have when ranks or mission unlock method is chosen.
-    Spreads evenly across all levels, then spreads across the later half with the remainder.
+    Spreads levels as evenly as it can, then spreads across the later half with the remainder.
     """
     display_name = "Mission Count"
     range_start = 3
@@ -122,14 +143,6 @@ class LevelGradient(Range):
     range_start = 0
     range_end = 100
     default = 50
-
-class ProgressiveChecks(DefaultOnToggle):
-    """
-    If every medal up to the medal cap should count for checks, or if only 1 check occurs for achieving the cap medal.
-    If off, the number of checks will not change with changes to the medal cap.
-    === DOES NOT DO ANYTHING ATM ===
-    """
-    display_name = "Progressive Checks"
 
 class Traps(DefaultOnToggle):
     """
@@ -149,11 +162,17 @@ class Goal(Choice):
     option_trueending = 2
     default = 1
 
-class BossesCap(MedalCap):
+class BossesCap(Choice):
     """
     The medal cap to use for the bosses if running the 3 bosses goal.
     """
     display_name = "3 Bosses Medal Cap"
+    option_bronze = 1
+    option_silver = 2
+    option_gold = 3
+    option_ace = 4
+    option_dev = 5
+    default = 4
 
 class NeonWhiteDeathLink(DeathLink):
     __doc__ = (DeathLink.__doc__ + "\n\n    You can disable this or set it to give yourself a trap effect when " +  # pyright: ignore[reportOptionalOperand]
@@ -165,17 +184,17 @@ class NeonWhiteOptions(PerGameCommonOptions):
     start_inventory_from_pool: StartInventoryPool
     difficulty_knowledge: KnowledgeDifficulty
     difficulty_execution: ExecutionDifficulty
-    medal_cap: MedalCap
+    medal_select: MedalSelect
     gifts: Gifts
     sidequests: Sidequests
     unlock_method: MissionUnlockMethod
-    rank_requirement: RankRequirement
+    total_ranks: TotalRanks
+    ranks_required_percent: RanksRequiredPercentage
     mission_count: MissionCount
     level_gradient: LevelGradient
     starting_level_count: StartingLevelCount
     goal: Goal
     bosses_goal_cap: BossesCap
     boof_shenanigans: BoofShenanigans
-    progressive_checks: ProgressiveChecks
     death_link: NeonWhiteDeathLink
     bad_effects: Traps

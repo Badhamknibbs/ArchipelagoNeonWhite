@@ -1,10 +1,14 @@
+# pyright: reportUnannotatedClassAttribute=false
+# pyright: reportMatchNotExhaustive=false
+
 import base64
 import json
 import zlib
-from typing import Any
+from typing import Any, override
 
-from BaseClasses import Tutorial, Item
+from BaseClasses import Item, MultiWorld, Tutorial
 from rule_builder.rules import CanReachLocation, Rule
+
 from worlds.AutoWorld import WebWorld, World
 
 from .items import NWItem, get_items_from_category, nw_item_groups, nw_items
@@ -19,7 +23,13 @@ from .locations import (
 )
 
 #from .Locations import PTLocation, pt_locations, pt_location_groups
-from .options import ExecutionDifficulty, Goal, KnowledgeDifficulty, MissionUnlockMethod, NeonWhiteOptions
+from .options import (
+    ExecutionDifficulty,
+    Goal,
+    KnowledgeDifficulty,
+    MissionUnlockMethod,
+    NeonWhiteOptions,
+)
 from .regions import create_regions
 from .rules import (
     LevelRequirements,
@@ -27,7 +37,6 @@ from .rules import (
     Medal,
     get_mission_rank_required,
     import_json_to_data,
-    medal_from_medal_cap,
     set_rules,
 )
 
@@ -53,8 +62,10 @@ class NeonWhiteWorld(World):
     """
 
     game = "Neon White"
+    origin_region_name = "Central Heaven"
     options: NeonWhiteOptions  # pyright: ignore[reportIncompatibleVariableOverride]
     options_dataclass = NeonWhiteOptions
+    web = NeonWhiteWeb()
 
     item_name_to_id = {name: data.id for name, data in nw_items.items()}  # noqa: RUF012
 
@@ -63,49 +74,56 @@ class NeonWhiteWorld(World):
     item_name_groups = nw_item_groups
     location_name_groups = checks_in_sets_lvl
 
-    ordered_levels: list[str]   # Post-rando level list, to be split into missions every 11 levels
-    ranks_required: int
+    requirements: dict[int, LevelRequirementSet] = {}
 
-    requirements: LevelRequirementSet
+    def __init__(self, multiworld: MultiWorld, player: int):
+        super().__init__(multiworld, player)
 
-    early_levels: list[str]
+        self.ordered_levels: list[str] = []   # Post-rando level list, to be split into missions every 11 levels
+        self.early_levels: list[str] = []
+        self.ranks_required: int = 0
+        self.use_levels: bool = False
 
-    origin_region_name = "Central Heaven"
+        self.requirement: LevelRequirementSet
 
-    web = NeonWhiteWeb()
-
+    @override
     def generate_early(self) -> None:
         if not self.player_name.isascii():
-            raise Exception("Neon White yaml's slot name has invalid character(s).")
+            raise ValueError("Neon White yaml's slot name has invalid character(s).")
 
         self.ordered_levels = []
 
         ut_regen = getattr(self.multiworld, "re_gen_passthrough", {})
         if (self.game in ut_regen):
-            ut_regen = ut_regen[self.game]
+            ut_regen: dict[str, Any] = ut_regen[self.game]
             self.ordered_levels = ut_regen["levels"]
             self.early_levels = ut_regen["early_levels"]
             self.ranks_required = ut_regen["rank_requirement"]
             self.options.mission_count.value = ut_regen["mission_count"]
-            self.options.medal_cap.value = ut_regen["medal_cap"]
             self.options.difficulty_knowledge.value = ut_regen["difficulty_knowledge"]
-            self.options.difficulty_knowledge.value = ut_regen["difficulty_execution"]
+            self.options.difficulty_execution.value = ut_regen["difficulty_execution"]
             self.options.boof_shenanigans.value = ut_regen["boof_shenanigans"]
             self.options.unlock_method = ut_regen["unlock_method"]
+            self.options.total_ranks.value = ut_regen["total_ranks"]
 
-        self.use_levels: bool = self.options.unlock_method == MissionUnlockMethod.option_levels
+        self.use_levels = self.options.unlock_method == MissionUnlockMethod.option_levels
 
-        medal_capped = medal_from_medal_cap(self.options.medal_cap)
+        req_select = int(self.options.difficulty_knowledge)
+        req_select += int(self.options.difficulty_execution) * 10
 
-        self.requirements = import_json_to_data(
-            self.options.difficulty_knowledge, self.options.difficulty_execution, medal_capped)
+        if (req_select not in NeonWhiteWorld.requirements):
+            NeonWhiteWorld.requirements[req_select] = import_json_to_data(
+                self.options.difficulty_knowledge, self.options.difficulty_execution)
+
+        self.requirement = NeonWhiteWorld.requirements[req_select]
+        medal_capped = max([Medal(x) for x in self.options.medal_select], default=Medal.Bronze)
 
         if not ut_regen:
             self.early_levels = []
 
             for level in neon_white_levels_normal:
-                if (self.requirements.can_complete_level(level, medal_capped, LevelRequirements.FistOnly)
-                    and self.requirements.can_complete_level(level, Medal.Gift, LevelRequirements.FistOnly)):
+                if (self.requirement.can_complete_level(level, medal_capped, LevelRequirements.FistOnly)
+                    and self.requirement.can_complete_level(level, Medal.Gift, LevelRequirements.FistOnly)):
                     self.early_levels.append(level)
 
             cutoff = min(self.options.starting_level_count, len(self.early_levels))
@@ -114,7 +132,7 @@ class NeonWhiteWorld(World):
             self.early_levels = self.early_levels[:cutoff]
 
         if self.use_levels:
-            remain = self.options.starting_level_count - len(self.early_levels)
+            remain: int = self.options.starting_level_count - len(self.early_levels)
             if remain > 0:
                 levels = neon_white_levels_normal + neon_white_levels_giftless
                 if self.options.sidequests:
@@ -131,13 +149,15 @@ class NeonWhiteWorld(World):
             or self.options.difficulty_execution <= ExecutionDifficulty.option_casual):
                 self.multiworld.push_precollected(self.create_item("Katana"))
 
-
+    @override
     def create_item(self, name: str) -> NWItem:
         return NWItem(name, nw_items[name].classification, nw_items[name].id, self.player)
 
+    @override
     def create_regions(self):
         create_regions(self.player, self.multiworld, self.options)
 
+    @override
     def create_items(self):
         itempool: list[Item] = []
 
@@ -145,18 +165,18 @@ class NeonWhiteWorld(World):
 
         # Add soul cards
         itempool += [self.create_item(card) for card in get_items_from_category("Card")]
+        total_ranks_clamp: int = min(self.options.total_ranks.value, loc_count - len(itempool))
 
         if (not getattr(self.multiworld, "re_gen_passthrough", {})):
-            self.ranks_required = ((loc_count - len(itempool)) * (self.options.rank_requirement / 100))
+            self.ranks_required = int(total_ranks_clamp * (self.options.ranks_required_percent / 100))
 
         match self.options.unlock_method:
             case MissionUnlockMethod.option_missions:
                 # Add a number of mission unlock items equal to the mission count - 1
-                itempool += [self.create_item("Mission Unlock")] * (self.options.mission_count.value - 1)
+                itempool.extend(self.create_item("Mission Unlock") for _ in range(self.options.mission_count.value - 1))
             case MissionUnlockMethod.option_ranks:
                 # Make sure we add the neon ranks that we need
-                itempool += ([self.create_item("Neon Rank")]
-                    * get_mission_rank_required(self, self.options.mission_count.value))
+                itempool.extend(self.create_item("Neon Rank") for _ in range(total_ranks_clamp))
             case MissionUnlockMethod.option_levels:
                 levels = neon_white_levels_normal + neon_white_levels_giftless
                 if self.options.sidequests:
@@ -176,10 +196,12 @@ class NeonWhiteWorld(World):
 
         self.multiworld.itempool += itempool
 
+    @override
     def get_filler_item_name(self) -> str:
         # Until we make more filler, just stuff the pool with heavenly delight tickets
         return "Heavenly Delight Ticket"
 
+    @override
     def set_rules(self):
         set_rules(self.multiworld, self, self.options)
         rule: Rule | None = None
@@ -197,6 +219,7 @@ class NeonWhiteWorld(World):
 
         self.set_completion_rule(rule)
 
+    @override
     def fill_slot_data(self):
         dumps = json.dumps([neon_white_level_name_internal[x] for x in self.ordered_levels], separators=(",", ":"))
 
@@ -213,7 +236,7 @@ class NeonWhiteWorld(World):
 
         options_to_show = [
             "difficulty_knowledge", "difficulty_execution", "boof_shenanigans",
-            "medal_cap", "gifts", "sidequests", "unlock_method", "goal",
+            "medal_select", "gifts", "sidequests", "unlock_method", "goal",
             "death_link"]
 
         if self.options.goal == Goal.option_3bosses:
@@ -237,11 +260,11 @@ class NeonWhiteWorld(World):
             "early_levels": slot_data["early_levels"],
             "rank_requirement": slot_data["mission_costs"][-1],
             "mission_count": len(slot_data["mission_costs"]),
-            "medal_cap": slot_data["options"]["medal_cap"],
             "difficulty_knowledge": slot_data["options"]["difficulty_knowledge"],
             "difficulty_execution": slot_data["options"]["difficulty_execution"],
             "boof_shenanigans": slot_data["options"]["boof_shenanigans"],
-            "unlock_method": slot_data["options"]["unlock_method"]
+            "unlock_method": slot_data["options"]["unlock_method"],
+            "total_ranks": slot_data["options"]["total_ranks"]
         }
 
-        return ret  # noqa: RET504
+        return ret
