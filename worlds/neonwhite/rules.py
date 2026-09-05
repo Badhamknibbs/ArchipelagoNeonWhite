@@ -12,7 +12,6 @@ from . import NeonWhiteOptions, data
 from .locations import (
     neon_white_level_name_internal,
     neon_white_levels_giftless,
-    neon_white_levels_medals,
     neon_white_levels_normal,
     neon_white_levels_sidequests,
 )
@@ -40,7 +39,7 @@ class Medal(IntEnum):
     @override
     def _missing_(cls, value):
         if isinstance(value, str) and value.title() in cls.__members__:
-            return cls.__members__[value]
+            return cls.__members__[value.title()]
         return super()._missing_(value)
 
 class LevelRequirements(IntFlag):

@@ -14,6 +14,7 @@ class NWItem(Item):
     misc_id = 800
 
     card_classification = ItemClassification.progression | ItemClassification.useful
+    usefiller_classification = ItemClassification.useful | ItemClassification.deprioritized | ItemClassification.skip_balancing
 
 class NWItemData(NamedTuple):
     category: str
@@ -42,12 +43,23 @@ nw_items: dict[str, NWItemData] = {
     "Dominion - Discard":   NWItemData("Card", NWItem.card_id + 14, NWItem.card_classification),
 
     "Neon Rank":            NWItemData("Progression", NWItem.prog_id + 0,
-        ItemClassification.progression_skip_balancing),
+        ItemClassification.progression_deprioritized_skip_balancing),
     "Mission Unlock":       NWItemData("Progression", NWItem.prog_id + 1,
         ItemClassification.progression),
 
+    # Generic should not be found in the world; it's just a helper item for FillerWeights
+    # because im lazy and i don't want to use schema
+    "Generic": NWItemData("Filler", NWItem.misc_id + 99,
+        ItemClassification.filler),
     "Heavenly Delight Ticket": NWItemData("Filler", NWItem.misc_id + 0,
-        ItemClassification.filler)
+        ItemClassification.filler),
+    "Insight Crystal Dust": NWItemData("Filler", NWItem.misc_id + 1,
+        ItemClassification.filler),
+    "Health Card": NWItemData("Filler", NWItem.misc_id + 51,
+        NWItem.usefiller_classification),
+    "Ammo Card": NWItemData("Filler", NWItem.misc_id + 52,
+        NWItem.usefiller_classification)
+
 } | {
     f"{level}": NWItemData("Level", NWItem.level_id + i, ItemClassification.progression)
         for i, level in enumerate(neon_white_level_name_internal.keys())

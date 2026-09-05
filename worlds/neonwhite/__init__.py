@@ -17,7 +17,6 @@ from .locations import (
     neon_white_get_locations,
     neon_white_level_name_internal,
     neon_white_levels_giftless,
-    neon_white_levels_medals,
     neon_white_levels_normal,
     neon_white_levels_sidequests,
 )
@@ -90,6 +89,8 @@ class NeonWhiteWorld(World):
     def generate_early(self) -> None:
         if not self.player_name.isascii():
             raise ValueError("Neon White yaml's slot name has invalid character(s).")
+        if not all(x in nw_item_groups["Filler"] for x in self.options.filler_weights):
+            raise ValueError("Non-filler in filler_weights")
 
         self.ordered_levels = []
 
@@ -157,6 +158,12 @@ class NeonWhiteWorld(World):
     def create_regions(self):
         create_regions(self.player, self.multiworld, self.options)
 
+    def get_filler_rando(self, k: int = 1):
+        fillers = self.options.filler_weights;
+        choices = self.multiworld.random.choices(list(fillers.keys()), weights=list(fillers.values()), k=k)
+        generics = [x for x in nw_item_groups["Filler"] if nw_items[x].id % 100 < 50]
+        return [self.multiworld.random.choice(generics) if x == "Generic" else x for x in choices]
+
     @override
     def create_items(self):
         itempool: list[Item] = []
@@ -165,10 +172,6 @@ class NeonWhiteWorld(World):
 
         # Add soul cards
         itempool += [self.create_item(card) for card in get_items_from_category("Card")]
-        total_ranks_clamp: int = min(self.options.total_ranks.value, loc_count - len(itempool))
-
-        if (not getattr(self.multiworld, "re_gen_passthrough", {})):
-            self.ranks_required = int(total_ranks_clamp * (self.options.ranks_required_percent / 100))
 
         match self.options.unlock_method:
             case MissionUnlockMethod.option_missions:
@@ -176,6 +179,11 @@ class NeonWhiteWorld(World):
                 itempool.extend(self.create_item("Mission Unlock") for _ in range(self.options.mission_count.value - 1))
             case MissionUnlockMethod.option_ranks:
                 # Make sure we add the neon ranks that we need
+                total_ranks_clamp: int = min(self.options.total_ranks.value, loc_count - len(itempool))
+
+                if (not getattr(self.multiworld, "re_gen_passthrough", {})):
+                    self.ranks_required = int(total_ranks_clamp * (self.options.ranks_required_percent / 100))
+
                 itempool.extend(self.create_item("Neon Rank") for _ in range(total_ranks_clamp))
             case MissionUnlockMethod.option_levels:
                 levels = neon_white_levels_normal + neon_white_levels_giftless
@@ -192,14 +200,13 @@ class NeonWhiteWorld(World):
                 prec.remove(item)
 
         # Fill the rest with filler
-        itempool += [self.create_filler() for _ in range(loc_count - len(itempool))]
+        itempool += [self.create_item(x) for x in self.get_filler_rando(k=loc_count - len(itempool))]
 
         self.multiworld.itempool += itempool
 
     @override
     def get_filler_item_name(self) -> str:
-        # Until we make more filler, just stuff the pool with heavenly delight tickets
-        return "Heavenly Delight Ticket"
+        return self.get_filler_rando()[0]
 
     @override
     def set_rules(self):
@@ -207,7 +214,8 @@ class NeonWhiteWorld(World):
         rule: Rule | None = None
         match self.options.goal:
             case Goal.option_3bosses:
-                medalname = neon_white_levels_medals[self.options.bosses_goal_cap - 1]
+                # intentionally fail if no medal select
+                medalname = max([Medal(x) for x in self.options.medal_select]).name
                 rule = (
                     CanReachLocation(f"The Clocktower {medalname} Completion") &
                     CanReachLocation(f"The Third Temple {medalname} Completion") &
@@ -220,34 +228,44 @@ class NeonWhiteWorld(World):
         self.set_completion_rule(rule)
 
     @override
+    def extend_hint_information(self, hint_data: dict[int, dict[int, str]]):
+        hint_data[self.player] = {}
+
+        for location in self.multiworld.get_locations(self.player):
+            if location.address is not None and location.parent_region is not None:
+                p_region = location.parent_region
+                if p_region.name.startswith("Level: ") and p_region.entrances[0].parent_region is not None:
+                    hint_data[self.player][location.address] = f"{p_region.entrances[0].parent_region.name}"
+
+    @override
     def fill_slot_data(self):
-        dumps = json.dumps([neon_white_level_name_internal[x] for x in self.ordered_levels], separators=(",", ":"))
 
-        cpobj = zlib.compressobj(level=9, wbits=-15, memLevel=9)
-        encoded_levels = base64.a85encode(cpobj.compress(dumps.encode()) + cpobj.flush()).decode()
+        extra: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
 
-        if self.options.unlock_method == MissionUnlockMethod.option_missions:
-            mission_costs = list(range(self.options.mission_count))
-        else:
-            mission_costs = [
-                get_mission_rank_required(self, i + 1)
-                    for i in range(self.options.mission_count)
-            ]
+        if self.options.unlock_method != MissionUnlockMethod.option_levels:
+            dumps = json.dumps([neon_white_level_name_internal[x] for x in self.ordered_levels], separators=(",", ":"))
+
+            cpobj = zlib.compressobj(level=9, wbits=-15, memLevel=9)
+            encoded_levels = base64.a85encode(cpobj.compress(dumps.encode()) + cpobj.flush()).decode()
+
+            extra["level_order"] = encoded_levels
+
+            if self.options.unlock_method == MissionUnlockMethod.option_missions:
+                extra["mission_costs"] = list(range(self.options.mission_count))
+            elif self.options.unlock_method == MissionUnlockMethod.option_ranks:
+                extra["mission_costs"] = [
+                    get_mission_rank_required(self, i + 1)
+                        for i in range(self.options.mission_count)
+                ]
 
         options_to_show = [
             "difficulty_knowledge", "difficulty_execution", "boof_shenanigans",
             "medal_select", "gifts", "sidequests", "unlock_method", "goal",
             "death_link"]
 
-        if self.options.goal == Goal.option_3bosses:
-            options_to_show.append("bosses_goal_cap")
-
         return {
-            "level_order": encoded_levels,
-            "early_levels": self.early_levels,
-            "mission_costs": mission_costs,
             "options": self.options.as_dict(*options_to_show)
-        }
+        } | extra
 
     def interpret_slot_data(self, slot_data: dict[str, Any]) -> dict[str, Any]:
         reverse = {v: k for k, v in neon_white_level_name_internal.items()}

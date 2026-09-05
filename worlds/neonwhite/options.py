@@ -6,6 +6,7 @@ from Options import (
     Choice,
     DeathLink,
     DefaultOnToggle,
+    ItemDict,
     OptionSet,
     PerGameCommonOptions,
     Range,
@@ -99,7 +100,7 @@ class MedalSelect(OptionSet):
     display_name = "Medal Selection"
     valid_keys = (x.casefold() for x in neon_white_levels_medals)
     valid_keys_casefold = True
-    default = {"Bronze", "Gold"}
+    default = {"Bronze", "Ace"}
 
 class TotalRanks(Range):
     """
@@ -154,7 +155,7 @@ class Traps(DefaultOnToggle):
 class Goal(Choice):
     """
     What the goal to complete should be.
-    3bosses - Beat The Clocktower, The Third Temple, and Absolution with the goal medal cap.
+    3bosses - Beat The Clocktower, The Third Temple, and Absolution with the highest medal selected.
     TrueEnding - Gather all memories and write Green into the Book of Life. (WILL FAIL TO GEN)
     """
     display_name = "Goal"
@@ -162,17 +163,18 @@ class Goal(Choice):
     option_trueending = 2
     default = 1
 
-class BossesCap(Choice):
+class FillerWeights(ItemDict):
     """
-    The medal cap to use for the bosses if running the 3 bosses goal.
+    How often different types of filler should appear.
+    "Generic" means to pick from a list of filler that don't do anything.
+    Only filler items (+ Generic) can be listed here.
     """
-    display_name = "3 Bosses Medal Cap"
-    option_bronze = 1
-    option_silver = 2
-    option_gold = 3
-    option_ace = 4
-    option_dev = 5
-    default = 4
+    display_name = "Filler Weights"
+    default = {
+        "Generic": 10,
+        "Health Card": 1,
+        "Ammo Card": 1
+    }
 
 class NeonWhiteDeathLink(DeathLink):
     __doc__ = (DeathLink.__doc__ + "\n\n    You can disable this or set it to give yourself a trap effect when " +  # pyright: ignore[reportOptionalOperand]
@@ -194,7 +196,7 @@ class NeonWhiteOptions(PerGameCommonOptions):
     level_gradient: LevelGradient
     starting_level_count: StartingLevelCount
     goal: Goal
-    bosses_goal_cap: BossesCap
+    filler_weights: FillerWeights
     boof_shenanigans: BoofShenanigans
     death_link: NeonWhiteDeathLink
     bad_effects: Traps
