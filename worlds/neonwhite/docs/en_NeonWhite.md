@@ -24,8 +24,8 @@ There are also two difficulty sliders in this randomizer to control how extreme 
 
 - Vanilla: *Only* allow cards and strats the basegame shows you.
 - Casual: Expects the bare minimum, only tricks that are taught with in-game tutorials to beat the vanilla game.
-- Standard: Incorporates hidden but usually intended or otherwise easy to intuit tech/ideas.
-- Expert: Further includes some more advanced tech that is often only relevant to speedrunners.
+- Standard: Incorporates hidden but usually intended or otherwise easy to intuit tech/ideas. (breaking red surfaces through damage, parrying, etc.)
+- Expert: Further includes some more advanced tech that is often only relevant to speedrunners. (coyote jumps, phantom boosts, conscious ammo conservation tactics, etc.)
 - Master: Encompasses everything else from level-specific tech to extremely niche game quirks or nuances.
 
 ### Execution Difficulty:
