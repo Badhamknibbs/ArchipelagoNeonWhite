@@ -176,9 +176,24 @@ class FillerWeights(ItemDict):
         "Ammo Card": 1
     }
 
-class NeonWhiteDeathLink(DeathLink):
-    __doc__ = (DeathLink.__doc__ + "\n\n    You can disable this or set it to give yourself a trap effect when " +  # pyright: ignore[reportOptionalOperand]
-               "another player dies in the in-game mod options. === DOES NOT DO ANYTHING ATM ===")
+class DeathLinkAmnesty(Range):
+    """
+    How many deaths it takes to send a DeathLink.
+    """
+    display_name = "Death Link Amnesty"
+    range_start = 1
+    range_end = 30
+    default = 1
+
+class DeathLinkResets(Range):
+    """
+    How many **level resets** it takes to send a DeathLink.
+    Setting to 0 disables sending them on resets.
+    """
+    display_name = "Level Reset Death Link Amnesty"
+    range_start = 0
+    range_end = 50
+    default = 20
 
 
 @dataclass
@@ -197,6 +212,8 @@ class NeonWhiteOptions(PerGameCommonOptions):
     starting_level_count: StartingLevelCount
     goal: Goal
     filler_weights: FillerWeights
-    boof_shenanigans: BoofShenanigans
-    death_link: NeonWhiteDeathLink
+    death_link: DeathLink
+    death_link_amn: DeathLinkAmnesty
+    death_link_res: DeathLinkResets
     bad_effects: Traps
+    boof_shenanigans: BoofShenanigans

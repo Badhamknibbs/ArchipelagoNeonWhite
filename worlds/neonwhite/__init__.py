@@ -47,9 +47,9 @@ class NeonWhiteWeb(WebWorld):
         "English",
         "setup_en.md",
         "setup/en",
-        ["Badhamknibbs"]
+        ["Badhamknibbs", "stxticOVFL"]
     )]
-    #theme = "partyTime"
+    theme = "partyTime"
     bug_report_page = "https://github.com/Badhamknibbs/ArchipelagoNeonWhite/issues"
 
 
@@ -262,6 +262,9 @@ class NeonWhiteWorld(World):
             "difficulty_knowledge", "difficulty_execution", "boof_shenanigans",
             "medal_select", "gifts", "sidequests", "unlock_method", "goal",
             "death_link"]
+
+        if self.options.death_link:
+            options_to_show.extend(["death_link_amn", "death_link_res"])
 
         return {
             "options": self.options.as_dict(*options_to_show)
