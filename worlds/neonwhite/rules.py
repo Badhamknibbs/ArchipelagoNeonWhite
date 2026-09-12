@@ -3,7 +3,7 @@ import json
 import statistics
 from enum import IntEnum, IntFlag, auto
 from math import floor
-from typing import TYPE_CHECKING, Any, final, override
+from typing import TYPE_CHECKING, final
 
 from BaseClasses import MultiWorld
 from rule_builder.rules import False_, Has, HasAll, True_
@@ -36,7 +36,6 @@ class Medal(IntEnum):
     Gift = 5
 
     @classmethod
-    @override
     def _missing_(cls, value):
         if isinstance(value, str) and value.title() in cls.__members__:
             return cls.__members__[value.title()]

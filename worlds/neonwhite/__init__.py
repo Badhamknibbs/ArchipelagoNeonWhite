@@ -4,7 +4,7 @@
 import base64
 import json
 import zlib
-from typing import Any, override
+from typing import Any
 
 from BaseClasses import Item, MultiWorld, Tutorial
 from rule_builder.rules import CanReachLocation, Rule
@@ -85,7 +85,6 @@ class NeonWhiteWorld(World):
 
         self.requirement: LevelRequirementSet
 
-    @override
     def generate_early(self) -> None:
         if not self.player_name.isascii():
             raise ValueError("Neon White yaml's slot name has invalid character(s).")
@@ -150,11 +149,9 @@ class NeonWhiteWorld(World):
             or self.options.difficulty_execution <= ExecutionDifficulty.option_casual):
                 self.multiworld.push_precollected(self.create_item("Katana"))
 
-    @override
     def create_item(self, name: str) -> NWItem:
         return NWItem(name, nw_items[name].classification, nw_items[name].id, self.player)
 
-    @override
     def create_regions(self):
         create_regions(self.player, self.multiworld, self.options)
 
@@ -164,7 +161,6 @@ class NeonWhiteWorld(World):
         generics = [x for x in nw_item_groups["Filler"] if nw_items[x].id % 100 < 50]
         return [self.multiworld.random.choice(generics) if x == "Generic" else x for x in choices]
 
-    @override
     def create_items(self):
         itempool: list[Item] = []
 
@@ -204,11 +200,9 @@ class NeonWhiteWorld(World):
 
         self.multiworld.itempool += itempool
 
-    @override
     def get_filler_item_name(self) -> str:
         return self.get_filler_rando()[0]
 
-    @override
     def set_rules(self):
         set_rules(self.multiworld, self, self.options)
         rule: Rule | None = None
@@ -227,7 +221,6 @@ class NeonWhiteWorld(World):
 
         self.set_completion_rule(rule)
 
-    @override
     def extend_hint_information(self, hint_data: dict[int, dict[int, str]]):
         hint_data[self.player] = {}
 
@@ -237,7 +230,6 @@ class NeonWhiteWorld(World):
                 if p_region.name.startswith("Level: ") and p_region.entrances[0].parent_region is not None:
                     hint_data[self.player][location.address] = f"{p_region.entrances[0].parent_region.name}"
 
-    @override
     def fill_slot_data(self):
 
         extra: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
