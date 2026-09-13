@@ -6,6 +6,7 @@ import json
 import zlib
 from typing import Any
 
+from Options import OptionError
 from BaseClasses import Item, MultiWorld, Tutorial
 from rule_builder.rules import CanReachLocation, Rule
 
@@ -75,6 +76,8 @@ class NeonWhiteWorld(World):
 
     requirements: dict[int, LevelRequirementSet] = {}
 
+    ut_can_gen_without_yaml = True
+
     def __init__(self, multiworld: MultiWorld, player: int):
         super().__init__(multiworld, player)
 
@@ -87,24 +90,27 @@ class NeonWhiteWorld(World):
 
     def generate_early(self) -> None:
         if not self.player_name.isascii():
-            raise ValueError("Neon White yaml's slot name has invalid character(s).")
+            raise OptionError("Neon White yaml's slot name has invalid character(s).")
         if not all(x in nw_item_groups["Filler"] for x in self.options.filler_weights):
-            raise ValueError("Non-filler in filler_weights")
+            raise OptionError("Non-filler in filler_weights")
 
         self.ordered_levels = []
 
         ut_regen = getattr(self.multiworld, "re_gen_passthrough", {})
         if (self.game in ut_regen):
             ut_regen: dict[str, Any] = ut_regen[self.game]
-            self.ordered_levels = ut_regen["levels"]
+            self.ordered_levels = ut_regen.get("levels", [])
             self.early_levels = ut_regen["early_levels"]
-            self.ranks_required = ut_regen["rank_requirement"]
-            self.options.mission_count.value = ut_regen["mission_count"]
+            self.ranks_required = ut_regen.get("rank_requirement", 0)
+            self.options.mission_count.value = ut_regen.get("mission_count", 0)
             self.options.difficulty_knowledge.value = ut_regen["difficulty_knowledge"]
             self.options.difficulty_execution.value = ut_regen["difficulty_execution"]
             self.options.boof_shenanigans.value = ut_regen["boof_shenanigans"]
-            self.options.unlock_method = ut_regen["unlock_method"]
-            self.options.total_ranks.value = ut_regen["total_ranks"]
+            self.options.unlock_method.value = ut_regen["unlock_method"]
+            self.options.medal_select.value = ut_regen["medal_select"]
+            self.options.gifts.value = ut_regen["gifts"]
+            self.options.sidequests.value = ut_regen["sidequests"]
+            self.options.total_ranks.value = ut_regen.get("total_ranks", 0)
 
         self.use_levels = self.options.unlock_method == MissionUnlockMethod.option_levels
 
@@ -209,6 +215,8 @@ class NeonWhiteWorld(World):
         match self.options.goal:
             case Goal.option_3bosses:
                 # intentionally fail if no medal select
+                if len(self.options.medal_select.value) == 0:
+                    raise OptionError("Not enough medals selected")
                 medalname = max([Medal(x) for x in self.options.medal_select]).name
                 rule = (
                     CanReachLocation(f"The Clocktower {medalname} Completion") &
@@ -217,7 +225,7 @@ class NeonWhiteWorld(World):
                 )
 
         if rule is None:
-            raise NotImplementedError("end goal not configured")
+            raise OptionError("End goal not configured")
 
         self.set_completion_rule(rule)
 
@@ -249,6 +257,7 @@ class NeonWhiteWorld(World):
                     get_mission_rank_required(self, i + 1)
                         for i in range(self.options.mission_count)
                 ]
+                extra["total_ranks"]
 
         options_to_show = [
             "difficulty_knowledge", "difficulty_execution", "boof_shenanigans",
@@ -259,25 +268,35 @@ class NeonWhiteWorld(World):
             options_to_show.extend(["death_link_amn", "death_link_res"])
 
         return {
+            "early_levels": self.early_levels,
             "options": self.options.as_dict(*options_to_show)
         } | extra
 
-    def interpret_slot_data(self, slot_data: dict[str, Any]) -> dict[str, Any]:
-        reverse = {v: k for k, v in neon_white_level_name_internal.items()}
+    @staticmethod
+    def interpret_slot_data(slot_data: dict[str, Any]) -> dict[str, Any]:
+        extra: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
+        unlock = slot_data["options"]["unlock_method"]
 
-        dcobj = zlib.decompressobj(-15)
-        decoded = json.loads(dcobj.decompress(base64.a85decode(slot_data["level_order"])) + dcobj.flush())
+        if (unlock != MissionUnlockMethod.option_levels):
+            reverse = {v: k for k, v in neon_white_level_name_internal.items()}
 
-        ret = {
-            "levels": [reverse[x] for x in decoded],
+            dcobj = zlib.decompressobj(-15)
+            decoded = json.loads(dcobj.decompress(base64.a85decode(slot_data["level_order"])) + dcobj.flush())
+
+            extra["levels"] = [reverse[x] for x in decoded]
+            extra["mission_count"] = len(slot_data["mission_costs"])
+            extra["rank_requirement"] = slot_data["mission_costs"][-1]
+
+            if (unlock == MissionUnlockMethod.option_ranks):
+                extra["total_ranks"] = slot_data["options"]["total_ranks"]
+
+        return {
+            "unlock_method": unlock,
             "early_levels": slot_data["early_levels"],
-            "rank_requirement": slot_data["mission_costs"][-1],
-            "mission_count": len(slot_data["mission_costs"]),
             "difficulty_knowledge": slot_data["options"]["difficulty_knowledge"],
             "difficulty_execution": slot_data["options"]["difficulty_execution"],
             "boof_shenanigans": slot_data["options"]["boof_shenanigans"],
-            "unlock_method": slot_data["options"]["unlock_method"],
-            "total_ranks": slot_data["options"]["total_ranks"]
-        }
-
-        return ret
+            "gifts": slot_data["options"]["gifts"],
+            "sidequests": slot_data["options"]["sidequests"],
+            "medal_select": slot_data["options"]["medal_select"]
+        } | extra
