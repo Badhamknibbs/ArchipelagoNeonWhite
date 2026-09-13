@@ -257,7 +257,6 @@ class NeonWhiteWorld(World):
                     get_mission_rank_required(self, i + 1)
                         for i in range(self.options.mission_count)
                 ]
-                extra["total_ranks"]
 
         options_to_show = [
             "difficulty_knowledge", "difficulty_execution", "boof_shenanigans",
@@ -266,6 +265,9 @@ class NeonWhiteWorld(World):
 
         if self.options.death_link:
             options_to_show.extend(["death_link_amn", "death_link_res"])
+
+        if self.options.death_link:
+            options_to_show.extend(["total_ranks"])
 
         return {
             "early_levels": self.early_levels,
