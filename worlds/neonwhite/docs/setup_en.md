@@ -7,6 +7,7 @@
 ## Mod Installation/Configuration
 
 1. Download [MelonLoader](https://github.com/LavaGang/MelonLoader/releases/latest) and install **specifically v0.6.1** onto your `Neon White.exe`.
+    - If on Linux, ensure that you set the environment variable for `WINEDLLOVERRIDES` by setting your launch arguments similar to `WINEDLLOVERRIDES="version=n,b" %command%`.
 2. Run the game once. This will create required folders.
 3. Download and follow the installation instructions for [NeonLite](https://github.com/Faustas156/NeonLite).
     - NeonLite is **required** for this mod.
