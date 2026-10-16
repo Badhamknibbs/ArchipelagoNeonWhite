@@ -6,8 +6,8 @@ import json
 import zlib
 from typing import Any
 
+from BaseClasses import Item, Location, MultiWorld, Tutorial
 from Options import OptionError
-from BaseClasses import Item, MultiWorld, Tutorial
 from rule_builder.rules import CanReachLocation, Rule
 
 from worlds.AutoWorld import WebWorld, World
@@ -26,7 +26,6 @@ from .locations import (
 from .options import (
     ExecutionDifficulty,
     Goal,
-    KnowledgeDifficulty,
     MissionUnlockMethod,
     NeonWhiteOptions,
 )
@@ -74,7 +73,7 @@ class NeonWhiteWorld(World):
     item_name_groups = nw_item_groups
     location_name_groups = checks_in_sets_lvl
 
-    requirements: dict[int, LevelRequirementSet] = {}
+    requirements: dict[int, LevelRequirementSet] = {}  # noqa: RUF012
 
     ut_can_gen_without_yaml = True
 
@@ -88,11 +87,18 @@ class NeonWhiteWorld(World):
 
         self.requirement: LevelRequirementSet
 
+        self._rulegen_t = 0.0
+        self._rulegen_c = 0
+        self._ruleuse_t = 0.0
+        self._ruleuse_c = 0
+
     def generate_early(self) -> None:
         if not self.player_name.isascii():
             raise OptionError("Neon White yaml's slot name has invalid character(s).")
         if not all(x in nw_item_groups["Filler"] for x in self.options.filler_weights):
             raise OptionError("Non-filler in filler_weights")
+        if len(self.options.medal_select.value) < 2:
+            raise OptionError("Not enough medals selected")
 
         self.ordered_levels = []
 
@@ -151,8 +157,7 @@ class NeonWhiteWorld(World):
             for x in self.early_levels:
                 self.multiworld.push_precollected(self.create_item(x))
 
-        if (self.options.difficulty_knowledge <= KnowledgeDifficulty.option_vanilla
-            or self.options.difficulty_execution <= ExecutionDifficulty.option_casual):
+        if (self.options.difficulty_execution <= ExecutionDifficulty.option_casual):
                 self.multiworld.push_precollected(self.create_item("Katana"))
 
     def create_item(self, name: str) -> NWItem:
@@ -204,6 +209,9 @@ class NeonWhiteWorld(World):
         # Fill the rest with filler
         itempool += [self.create_item(x) for x in self.get_filler_rando(k=loc_count - len(itempool))]
 
+        if len(itempool) > loc_count:
+            raise OptionError("Settings create more items than there are locations")
+
         self.multiworld.itempool += itempool
 
     def get_filler_item_name(self) -> str:
@@ -229,6 +237,22 @@ class NeonWhiteWorld(World):
 
         self.set_completion_rule(rule)
 
+    @classmethod
+    def stage_fill_hook(cls, multiworld: MultiWorld,
+            progitempool: list[Item],
+            usefulitempool: list[Item],
+            filleritempool: list[Item],
+            fill_locations: list[Location]):
+
+        # yoinked from the core's SA2 impl
+        # this helps prevent fill errors a ton
+
+        mcguff = {"Neon Rank", "Mission Unlock"}
+
+        if multiworld.get_game_players("Neon White"):
+            progitempool.sort(
+                key=lambda item: 0 if (item.name in mcguff and item.game == "Neon White") else 1)
+
     def extend_hint_information(self, hint_data: dict[int, dict[int, str]]):
         hint_data[self.player] = {}
 
@@ -239,6 +263,8 @@ class NeonWhiteWorld(World):
                     hint_data[self.player][location.address] = f"{p_region.entrances[0].parent_region.name}"
 
     def fill_slot_data(self):
+        # print(f"rule gen: {self._rulegen_t}/{self._rulegen_c} = {self._rulegen_t/self._rulegen_c}")
+        # print(f"rule use: {self._ruleuse_t}/{self._ruleuse_c} = {self._ruleuse_t/self._ruleuse_c}")
 
         extra: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
 

@@ -1,0 +1,29 @@
+Neon White:
+  goal: 3bosses
+  difficulty_knowledge:
+    casual: 0
+    standard: 2
+    expert: 10
+    master: 2
+  difficulty_execution:
+    casual: 0
+    standard: 2
+    expert: 10
+    master: 1
+  unlock_method:
+    levels: 3
+    ranks: 5
+    missions: 1
+  mission_count:
+    random-range-3-30: 1
+  total_ranks:
+    random-range-low-50-200: 1
+  ranks_required_percent:
+    random-range-10-80: 1
+  medal_select:
+    - bronze
+    - ace
+
+  fuzz_constraints:
+    - option: medal_select
+      ensure_any: ["bronze", "silver", "gold", "ace", "dev"]

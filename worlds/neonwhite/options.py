@@ -27,7 +27,7 @@ class KnowledgeDifficulty(Choice):
     Master: Encompasses everything else from level-specific tech to extremely niche game quirks or nuances.
     """
     display_name = "Knowledge Difficulty"
-    option_vanilla = 1
+    # option_vanilla = 1
     option_casual = 2
     option_standard = 3
     option_expert = 4
@@ -44,7 +44,7 @@ class ExecutionDifficulty(Choice):
     Master: Unreasonably difficult solutions that are inconsistent/overly precise to the vast majority of players.
     """
     display_name = "Execution Difficulty"
-    option_vanilla = 1
+    # option_vanilla = 1
     option_casual = 2
     option_standard = 3
     option_expert = 4

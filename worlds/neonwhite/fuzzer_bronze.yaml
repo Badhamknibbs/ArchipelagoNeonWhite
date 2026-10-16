@@ -1,0 +1,8 @@
+Neon White:
+  goal: 3bosses
+  difficulty_knowledge: standard
+  difficulty_execution: standard
+  gifts: true
+  sidequests: true
+  medal_select:
+    - bronze
