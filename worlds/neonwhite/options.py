@@ -14,7 +14,7 @@ from Options import (
     Toggle,
 )
 
-from .locations import neon_white_levels_medals
+from .info import MEDALS
 
 
 class KnowledgeDifficulty(Choice):
@@ -98,7 +98,7 @@ class MedalSelect(OptionSet):
     Medals available are: Bronze, Silver, Gold, Ace, and Dev. Case-insensitive.
     """
     display_name = "Medal Selection"
-    valid_keys = [x.casefold() for x in neon_white_levels_medals]
+    valid_keys = tuple([x.casefold() for x in MEDALS])
     valid_keys_casefold = True
     default = {"Bronze", "Ace"}
 

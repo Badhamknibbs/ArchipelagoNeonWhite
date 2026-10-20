@@ -3,6 +3,7 @@
 
 import base64
 import json
+from pprint import pprint
 import zlib
 from typing import Any
 
@@ -12,14 +13,11 @@ from rule_builder.rules import CanReachLocation, Rule
 
 from worlds.AutoWorld import WebWorld, World
 
+from .info import LEVEL_INFO, MISSION_INFO, MissionInfo
 from .items import NWItem, get_items_from_category, nw_item_groups, nw_items
 from .locations import (
     checks_in_sets_lvl,
     neon_white_get_locations,
-    neon_white_level_name_internal,
-    neon_white_levels_giftless,
-    neon_white_levels_normal,
-    neon_white_levels_sidequests,
 )
 
 #from .Locations import PTLocation, pt_locations, pt_location_groups
@@ -31,11 +29,12 @@ from .options import (
 )
 from .regions import create_regions
 from .rules import (
-    LevelRequirements,
+    CardAbilityFlags,
     LevelRequirementSet,
     Medal,
     get_mission_rank_required,
     import_json_to_data,
+    level_rando,
     set_rules,
 )
 
@@ -87,10 +86,7 @@ class NeonWhiteWorld(World):
 
         self.requirement: LevelRequirementSet
 
-        self._rulegen_t = 0.0
-        self._rulegen_c = 0
-        self._ruleuse_t = 0.0
-        self._ruleuse_c = 0
+        self.missions: list[MissionInfo] = []
 
     def generate_early(self) -> None:
         if not self.player_name.isascii():
@@ -133,10 +129,12 @@ class NeonWhiteWorld(World):
         if not ut_regen:
             self.early_levels = []
 
-            for level in neon_white_levels_normal:
-                if (self.requirement.can_complete_level(level, medal_capped, LevelRequirements.FistOnly)
-                    and self.requirement.can_complete_level(level, Medal.Gift, LevelRequirements.FistOnly)):
-                    self.early_levels.append(level)
+            for level in LEVEL_INFO.values():
+                if level.giftless:
+                    continue
+                if (self.requirement.can_complete_level(level.name, medal_capped, CardAbilityFlags.FistOnly)
+                    and self.requirement.can_complete_level(level.name, Medal.Gift, CardAbilityFlags.FistOnly)):
+                    self.early_levels.append(level.name)
 
             cutoff = min(self.options.starting_level_count, len(self.early_levels))
 
@@ -146,9 +144,7 @@ class NeonWhiteWorld(World):
         if self.use_levels:
             remain: int = self.options.starting_level_count - len(self.early_levels)
             if remain > 0:
-                levels = neon_white_levels_normal + neon_white_levels_giftless
-                if self.options.sidequests:
-                    levels.extend(neon_white_levels_sidequests)
+                levels = [level.name for level in LEVEL_INFO.values() if not level.sidequest or self.options.sidequests]
 
                 self.early_levels += self.multiworld.random.choices(
                     [x for x in levels if x not in self.early_levels],
@@ -160,11 +156,37 @@ class NeonWhiteWorld(World):
         if (self.options.difficulty_execution <= ExecutionDifficulty.option_casual):
                 self.multiworld.push_precollected(self.create_item("Katana"))
 
+
     def create_item(self, name: str) -> NWItem:
         return NWItem(name, nw_items[name].classification, nw_items[name].id, self.player)
 
     def create_regions(self):
-        create_regions(self.player, self.multiworld, self.options)
+        # create levels and missions
+        if not self.ordered_levels:
+            self.ordered_levels = level_rando(self)
+
+        if self.use_levels:
+            self.missions = [i for i in MISSION_INFO.values() if self.options.sidequests or not i.sidequest]
+        else:
+            mission_count = int(self.options.mission_count)
+            levels_norm = len(self.ordered_levels) // mission_count
+            offset = mission_count - (len(self.ordered_levels) % mission_count)
+
+            level_total = 0
+            for i in range(mission_count):
+                level_count = levels_norm
+                if i >= offset:
+                    level_count += 1
+
+                self.missions.append(
+                    MissionInfo(
+                        tuple(self.ordered_levels[level_total : (level_total + level_count)]),
+                        alias=f"Mission {i + 1}"
+                    )
+                )
+                level_total += level_count
+
+        create_regions(self.multiworld, self, self.options)
 
     def get_filler_rando(self, k: int = 1):
         fillers = self.options.filler_weights;
@@ -183,7 +205,7 @@ class NeonWhiteWorld(World):
         match self.options.unlock_method:
             case MissionUnlockMethod.option_missions:
                 # Add a number of mission unlock items equal to the mission count - 1
-                itempool.extend(self.create_item("Mission Unlock") for _ in range(self.options.mission_count.value - 1))
+                itempool.extend([self.create_item("Mission Unlock") for _ in range(self.options.mission_count.value - 1)])
             case MissionUnlockMethod.option_ranks:
                 # Make sure we add the neon ranks that we need
                 total_ranks_clamp: int = min(self.options.total_ranks.value, loc_count - len(itempool))
@@ -191,13 +213,9 @@ class NeonWhiteWorld(World):
                 if (not getattr(self.multiworld, "re_gen_passthrough", {})):
                     self.ranks_required = int(total_ranks_clamp * (self.options.ranks_required_percent / 100))
 
-                itempool.extend(self.create_item("Neon Rank") for _ in range(total_ranks_clamp))
+                itempool.extend([self.create_item("Neon Rank") for _ in range(total_ranks_clamp)])
             case MissionUnlockMethod.option_levels:
-                levels = neon_white_levels_normal + neon_white_levels_giftless
-                if self.options.sidequests:
-                    levels.extend(neon_white_levels_sidequests)
-
-                itempool.extend(self.create_item(x) for x in levels)
+                itempool.extend([self.create_item(x.name) for x in LEVEL_INFO.values() if not x.sidequest or self.options.sidequests])
 
         prec = self.multiworld.precollected_items[self.player].copy()
 
@@ -206,11 +224,12 @@ class NeonWhiteWorld(World):
                 itempool.remove(item)
                 prec.remove(item)
 
+        if len(itempool) > loc_count:
+            raise OptionError(f"Settings create more items ({len(itempool)}) than there are locations ({loc_count})")
+
         # Fill the rest with filler
         itempool += [self.create_item(x) for x in self.get_filler_rando(k=loc_count - len(itempool))]
 
-        if len(itempool) > loc_count:
-            raise OptionError("Settings create more items than there are locations")
 
         self.multiworld.itempool += itempool
 
@@ -245,7 +264,7 @@ class NeonWhiteWorld(World):
             fill_locations: list[Location]):
 
         # yoinked from the core's SA2 impl
-        # this helps prevent fill errors a ton
+        # this helps prevent fill errors      i think
 
         mcguff = {"Neon Rank", "Mission Unlock"}
 
@@ -263,13 +282,12 @@ class NeonWhiteWorld(World):
                     hint_data[self.player][location.address] = f"{p_region.entrances[0].parent_region.name}"
 
     def fill_slot_data(self):
-        # print(f"rule gen: {self._rulegen_t}/{self._rulegen_c} = {self._rulegen_t/self._rulegen_c}")
-        # print(f"rule use: {self._ruleuse_t}/{self._ruleuse_c} = {self._ruleuse_t/self._ruleuse_c}")
+        pprint(self.missions)
 
         extra: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
 
         if self.options.unlock_method != MissionUnlockMethod.option_levels:
-            dumps = json.dumps([neon_white_level_name_internal[x] for x in self.ordered_levels], separators=(",", ":"))
+            dumps = json.dumps([LEVEL_INFO[x].id for x in self.ordered_levels], separators=(",", ":"))
 
             cpobj = zlib.compressobj(level=9, wbits=-15, memLevel=9)
             encoded_levels = base64.a85encode(cpobj.compress(dumps.encode()) + cpobj.flush()).decode()
@@ -306,7 +324,7 @@ class NeonWhiteWorld(World):
         unlock = slot_data["options"]["unlock_method"]
 
         if (unlock != MissionUnlockMethod.option_levels):
-            reverse = {v: k for k, v in neon_white_level_name_internal.items()}
+            reverse = {l.id: l.name for l in LEVEL_INFO.values()}
 
             dcobj = zlib.decompressobj(-15)
             decoded = json.loads(dcobj.decompress(base64.a85decode(slot_data["level_order"])) + dcobj.flush())

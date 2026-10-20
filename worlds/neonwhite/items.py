@@ -3,7 +3,7 @@ from typing import NamedTuple
 
 from BaseClasses import Item, ItemClassification
 
-from .locations import neon_white_level_name_internal
+from .info import LEVEL_INFO
 
 
 class NWItem(Item):
@@ -29,18 +29,18 @@ def get_items_from_category(category: str) -> Iterable[str]:
 nw_items: dict[str, NWItemData] = {
     "Katana":               NWItemData("Card", NWItem.card_id +  1, NWItem.card_classification),
     "Book of Life":         NWItemData("Card", NWItem.card_id +  2, NWItem.card_classification),
-    "Purify - Fire":        NWItemData("Card", NWItem.card_id +  3, NWItem.card_classification),
-    "Purify - Discard":     NWItemData("Card", NWItem.card_id +  4, NWItem.card_classification),
-    "Elevate - Fire":       NWItemData("Card", NWItem.card_id +  5, NWItem.card_classification),
-    "Elevate - Discard":    NWItemData("Card", NWItem.card_id +  6, NWItem.card_classification),
-    "Godspeed - Fire":      NWItemData("Card", NWItem.card_id +  7, NWItem.card_classification),
-    "Godspeed - Discard":   NWItemData("Card", NWItem.card_id +  8, NWItem.card_classification),
-    "Stomp - Fire":         NWItemData("Card", NWItem.card_id +  9, NWItem.card_classification),
-    "Stomp - Discard":      NWItemData("Card", NWItem.card_id + 10, NWItem.card_classification),
-    "Fireball - Fire":      NWItemData("Card", NWItem.card_id + 11, NWItem.card_classification),
-    "Fireball - Discard":   NWItemData("Card", NWItem.card_id + 12, NWItem.card_classification),
-    "Dominion - Fire":      NWItemData("Card", NWItem.card_id + 13, NWItem.card_classification),
-    "Dominion - Discard":   NWItemData("Card", NWItem.card_id + 14, NWItem.card_classification),
+    "Purify (Fire)":        NWItemData("Card", NWItem.card_id +  3, NWItem.card_classification),
+    "Purify (Discard)":     NWItemData("Card", NWItem.card_id +  4, NWItem.card_classification),
+    "Elevate (Fire)":       NWItemData("Card", NWItem.card_id +  5, NWItem.card_classification),
+    "Elevate (Discard)":    NWItemData("Card", NWItem.card_id +  6, NWItem.card_classification),
+    "Godspeed (Fire)":      NWItemData("Card", NWItem.card_id +  7, NWItem.card_classification),
+    "Godspeed (Discard)":   NWItemData("Card", NWItem.card_id +  8, NWItem.card_classification),
+    "Stomp (Fire)":         NWItemData("Card", NWItem.card_id +  9, NWItem.card_classification),
+    "Stomp (Discard)":      NWItemData("Card", NWItem.card_id + 10, NWItem.card_classification),
+    "Fireball (Fire)":      NWItemData("Card", NWItem.card_id + 11, NWItem.card_classification),
+    "Fireball (Discard)":   NWItemData("Card", NWItem.card_id + 12, NWItem.card_classification),
+    "Dominion (Fire)":      NWItemData("Card", NWItem.card_id + 13, NWItem.card_classification),
+    "Dominion (Discard)":   NWItemData("Card", NWItem.card_id + 14, NWItem.card_classification),
 
     "Neon Rank":            NWItemData("Progression", NWItem.prog_id + 0,
         ItemClassification.progression_deprioritized_skip_balancing),
@@ -55,14 +55,24 @@ nw_items: dict[str, NWItemData] = {
         ItemClassification.filler),
     "Insight Crystal Dust": NWItemData("Filler", NWItem.misc_id + 1,
         ItemClassification.filler),
+    "Garbage": NWItemData("Filler", NWItem.misc_id + 2,
+        ItemClassification.filler),
+    "Book of Death Page": NWItemData("Filler", NWItem.misc_id + 3,
+        ItemClassification.filler),
+    "Cloud 9 Minigolf Ball": NWItemData("Filler", NWItem.misc_id + 4,
+        ItemClassification.filler),
+    "Neon Mask": NWItemData("Filler", NWItem.misc_id + 5,
+        ItemClassification.filler),
+    "Secret of Heaven": NWItemData("Filler", NWItem.misc_id + 6,
+        ItemClassification.filler),
+
     "Health Card": NWItemData("Filler", NWItem.misc_id + 51,
         NWItem.usefiller_classification),
     "Ammo Card": NWItemData("Filler", NWItem.misc_id + 52,
         NWItem.usefiller_classification)
-
 } | {
     f"{level}": NWItemData("Level", NWItem.level_id + i, ItemClassification.progression)
-        for i, level in enumerate(neon_white_level_name_internal.keys())
+        for i, level in enumerate(LEVEL_INFO.keys())
 }
 
 item_categories = [
