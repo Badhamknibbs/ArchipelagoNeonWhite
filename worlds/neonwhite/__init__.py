@@ -282,7 +282,7 @@ class NeonWhiteWorld(World):
                     hint_data[self.player][location.address] = f"{p_region.entrances[0].parent_region.name}"
 
     def fill_slot_data(self):
-        pprint(self.missions)
+        # pprint(self.missions)
 
         extra: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
 

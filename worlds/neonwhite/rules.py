@@ -101,8 +101,8 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
 
     @override
     def _instantiate(self, world: "NeonWhiteWorld") -> Rule.Resolved:
-        if world in self._resregistry:
-            return self._resregistry[world]
+        if world.player in self._resregistry:
+            return self._resregistry[world.player]
 
         if not self.reqs:
             res = False_().resolve(world)
@@ -117,7 +117,7 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
                 self._built,
                 player=world.player)
 
-        self._resregistry[world] = res
+        self._resregistry[world.player] = res
         return res
 
     class Resolved(Rule.Resolved):
@@ -304,16 +304,16 @@ def set_rules(multiworld: MultiWorld, world: "NeonWhiteWorld", options: NeonWhit
 
         for level in mission.levels:
             level_region = level.regions[world.player]
-            level_region.get_locations()
 
             if world.use_levels:
                 world.set_rule(level_region.entrances[0], Has(level.name))
 
 
             if not level.sidequest:
-                setters: dict[str, Callable[[Location]]] = {}
-                for medal in medals:
-                    setters[f"{level.name} {medal.name} Completion"] = partial(_set_rule, world, medal, level.name)
+                setters: dict[str, Callable[[Location]]] = {
+                    f"{level.name} {medal.name} Completion": partial(_set_rule, world, medal, level.name)
+                    for medal in medals
+                }
                 if options.gifts and not level.giftless:
                     setters[f"{level.name} Gift"] = partial(_set_rule, world, Medal.Gift, level.name)
 
