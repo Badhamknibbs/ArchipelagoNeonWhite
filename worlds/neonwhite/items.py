@@ -19,7 +19,6 @@ class NWItem(Item):
     fission_card_id = 20000 # same as above, but only for the numbered missions (Fake mISSONS)
 
     card_classification = ItemClassification.progression | ItemClassification.useful
-    usefiller_classification = ItemClassification.useful | ItemClassification.deprioritized | ItemClassification.skip_balancing
 
 class NWItemData(NamedTuple):
     category: str
@@ -32,7 +31,7 @@ def get_items_from_category(category: str) -> Iterable[str]:
             yield name
 
 nw_items: dict[str, NWItemData] = {
-    CAF.solo_to_string(x): NWItemData("Card", NWItem.card_id + x.bit_length(), NWItem.card_classification)
+    CAF.solo_to_string(x): NWItemData("Global Card", NWItem.card_id + x.bit_length(), NWItem.card_classification)
     for x in CAF
 } | {
     "Neon Rank":            NWItemData("Progression", NWItem.prog_id + 0,
@@ -60,9 +59,9 @@ nw_items: dict[str, NWItemData] = {
         ItemClassification.filler),
 
     "Health Card": NWItemData("Filler", NWItem.misc_id + 51,
-        NWItem.usefiller_classification),
+        ItemClassification.filler),
     "Ammo Card": NWItemData("Filler", NWItem.misc_id + 52,
-        NWItem.usefiller_classification)
+        ItemClassification.filler)
 } | {
     f"{level}": NWItemData("Level", NWItem.level_id + i, ItemClassification.progression)
         for i, level in enumerate(LEVEL_INFO.keys())
@@ -89,7 +88,7 @@ nw_items: dict[str, NWItemData] = {
 
 item_categories = [
     "Progression",
-    "Card",
+    "Global Card",
     "Filler",
     "Level",
     "In-game Mission Card",

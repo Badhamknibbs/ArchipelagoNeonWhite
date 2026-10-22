@@ -32,22 +32,26 @@ RES_T: TypeAlias = deque[tuple[tuple[str, ...], "RES_F"]]
 @dataclasses.dataclass()
 class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
     reqs: frozenset[CardAbilityFlags] = dataclasses.field(init=False)
-    _built: RES_F | Rule | None = dataclasses.field(init=False)
+    level: str = dataclasses.field(init=False)
+    _reqstotal: CardAbilityFlags = dataclasses.field(init=False)
+    _built: RES_F | None = dataclasses.field(init=False)
     _resregistry: WeakValueDictionary = dataclasses.field(init=False)
 
     # https://stackoverflow.com/a/71563134
     _registry: ClassVar[WeakValueDictionary] = WeakValueDictionary()
-    def __new__(cls, reqs: frozenset[CardAbilityFlags], *args, **kwargs) -> Self:
-        if reqs in cls._registry:
-            return cls._registry[reqs]
+    def __new__(cls, *args, **kwargs) -> Self:
+        if args in cls._registry:
+            return cls._registry[args]
         i = super().__new__(cls)
-        cls._registry[reqs] = i
+        cls._registry[args] = i
         return i
 
-    def __init__(self, reqs: frozenset[CardAbilityFlags]) -> None:
+    def __init__(self, reqs: frozenset[CardAbilityFlags], level: str) -> None:
         if hasattr(self, "_rule"):
             return
         self.reqs = reqs
+        self.level = level
+        self._reqstotal = reduce(or_, self.reqs, CardAbilityFlags.FistOnly)
         self._built = None
         self._resregistry = WeakValueDictionary()
 
@@ -99,6 +103,16 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
     def _make_rule_O(self) -> "Rule":
         return reduce(LevelReqRule._merge_O, sorted(self.reqs, key=lambda x: x.bit_count(), reverse=True), False_())
 
+    @staticmethod
+    def _translate(resf: RES_F, prefix: str, globals: set[str]) -> RES_F:
+        if not resf:
+            return resf
+        rest = []
+        for items, dig in resf:
+            itnew = tuple([prefix + x if x not in globals else x for x in items])
+            rest.append((itnew, LevelReqRule._translate(dig, prefix, globals)))
+        return tuple(rest)
+
     @override
     def _instantiate(self, world: "NeonWhiteWorld") -> Rule.Resolved:
         if world.player in self._resregistry:
@@ -112,10 +126,22 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
             if self._built is None:
                 self._built = self._make_rule(self.reqs)
 
-            res = self.Resolved(
-                self.reqs,
-                self._built,
-                player=world.player)
+            prefix = world.get_prefix(self.level)
+            trimmed = world.global_cards & self._reqstotal
+            if trimmed == self._reqstotal or not prefix:
+                res = self.Resolved(
+                    self.reqs,
+                    self._built,
+                    prefix,
+                    trimmed,
+                    player=world.player)
+            else:
+                res = self.Resolved(
+                    self.reqs,
+                    LevelReqRule._translate(self._built, prefix, trimmed.to_set()),
+                    prefix,
+                    trimmed,
+                    player=world.player)
 
         self._resregistry[world.player] = res
         return res
@@ -123,6 +149,8 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
     class Resolved(Rule.Resolved):
         reqs: frozenset[CardAbilityFlags]
         built: RES_F
+        prefix: str
+        globals: CardAbilityFlags
 
         @override
         def _evaluate(self, state: CollectionState) -> bool:
@@ -131,7 +159,7 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
 
             while iterstack:
                 it = iterstack[-1]
-                for items, dig in it:
+                for items, dig in it: # one of the funniest lines of code i've written
                     for item in items:
                         if not playeri[item]:
                             break
@@ -211,7 +239,7 @@ def import_json_to_data(know_diff: KnowledgeDifficulty, exec_diff: ExecutionDiff
 
                     solutions[i].add(reqs)
 
-        new_requirements.requirements[entry] = [LevelReqRule(frozenset(x)) for x in solutions]
+        new_requirements.requirements[entry] = [LevelReqRule(frozenset(x), entry) for x in solutions]
     return new_requirements
 
 # Actual functions related to rules start here
@@ -232,21 +260,20 @@ def level_rando(world: "NeonWhiteWorld") -> list[str]:
                 req.bit_count() + 1 for req in reqs.reqs
             ) for reqs in medal_reqs if reqs.reqs
         ) for medal_reqs in level_reqs]
+    maxweight = max(weights)
 
     variance: float = world.options.level_gradient / 100
 
     # https://softwareengineering.stackexchange.com/a/344274
     def weighted_shuffle(items: list[str]):
-        norm = [x / max(weights) for x in weights]
-        v = [norm[i] + variance * (world.random.random() - norm[i]) for i in range(len(items))]
+        norm = [x / maxweight for x in weights]
+        v = [(1 - variance) * norm[i] + variance * world.random.random() for i in range(len(items))]
         order = sorted(range(len(items)), key=lambda i: v[i])
 
         return [items[i] for i in order]
 
     # Shuffle the rest, append, then put Absolution at the end
-    level_queue = weighted_shuffle(level_queue)
-
-    return world.early_levels + level_queue + ["Absolution"]
+    return world.early_levels + weighted_shuffle(level_queue) + ["Absolution"]
 
 # Mission is 1-indexed
 def get_mission_rank_required(world: "NeonWhiteWorld", mission: int) -> int:

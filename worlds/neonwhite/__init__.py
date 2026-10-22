@@ -3,7 +3,6 @@
 
 import base64
 import json
-from pprint import pprint
 import zlib
 from typing import Any
 
@@ -13,7 +12,7 @@ from rule_builder.rules import CanReachLocation, Rule
 
 from worlds.AutoWorld import WebWorld, World
 
-from .info import LEVEL_INFO, MISSION_INFO, MissionInfo
+from .info import LEVEL_INFO, MISSION_INFO, CardAbilityFlags, MissionInfo
 from .items import NWItem, get_items_from_category, nw_item_groups, nw_items
 from .locations import (
     checks_in_sets_lvl,
@@ -22,6 +21,7 @@ from .locations import (
 
 #from .Locations import PTLocation, pt_locations, pt_location_groups
 from .options import (
+    CardTypes,
     ExecutionDifficulty,
     Goal,
     MissionUnlockMethod,
@@ -29,7 +29,6 @@ from .options import (
 )
 from .regions import create_regions
 from .rules import (
-    CardAbilityFlags,
     LevelRequirementSet,
     Medal,
     get_mission_rank_required,
@@ -113,6 +112,7 @@ class NeonWhiteWorld(World):
             self.options.gifts.value = ut_regen["gifts"]
             self.options.sidequests.value = ut_regen["sidequests"]
             self.options.total_ranks.value = ut_regen.get("total_ranks", 0)
+            self.options.card_types.value = ut_regen["card_types"]
 
         self.use_levels = self.options.unlock_method == MissionUnlockMethod.option_levels
 
@@ -154,8 +154,23 @@ class NeonWhiteWorld(World):
                 self.multiworld.push_precollected(self.create_item(x))
 
         if (self.options.difficulty_execution <= ExecutionDifficulty.option_casual):
-                self.multiworld.push_precollected(self.create_item("Katana"))
+            self.multiworld.push_precollected(self.create_item("Katana"))
 
+        self.global_cards = CardAbilityFlags.FistOnly
+
+        if (self.options.card_types != CardTypes.option_global):
+            prec = self.multiworld.precollected_items[self.player]
+            gcardset = set(get_items_from_category("Global Card"))
+            mygcards = self.options.global_cards.value
+
+            for item in prec:
+                if item.name in gcardset:
+                    mygcards.add(item.name)
+
+            csfold = {x.casefold(): x for x in get_items_from_category("Global Card")}
+
+            for card in mygcards:
+                self.global_cards |= CardAbilityFlags(1 << (nw_items[csfold[card.casefold()]].id % 100 - 1))
 
     def create_item(self, name: str) -> NWItem:
         return NWItem(name, nw_items[name].classification, nw_items[name].id, self.player)
@@ -196,16 +211,33 @@ class NeonWhiteWorld(World):
 
     def create_items(self):
         itempool: list[Item] = []
-
-        loc_count = len(self.get_locations())  # pyright: ignore[reportArgumentType]
+        loc_count = len(self.multiworld.get_unfilled_locations(self.player))  # pyright: ignore[reportArgumentType]
 
         # Add soul cards
-        itempool += [self.create_item(card) for card in get_items_from_category("Card")]
+        if self.options.card_types == CardTypes.option_global:
+            itempool += [self.create_item(card) for card in get_items_from_category("Global Card")]
+        else:
+            missions = self.missions
+            if self.options.card_types == CardTypes.option_ingame_missions and not self.use_levels:
+                missions = [i for i in MISSION_INFO.values() if self.options.sidequests or not i.sidequest]
+
+            itempool += [self.create_item(CardAbilityFlags.solo_to_string(c)) for c in self.global_cards]
+
+            for mission in missions:
+                itempool += [self.create_item(f"{mission.name or mission.alias} - {CardAbilityFlags.solo_to_string(c)}")
+                    for c in mission.cards if c not in self.global_cards]
+
+        prec = self.multiworld.precollected_items[self.player].copy()
+        # cleanse once: matters for ranks mode
+        for item in itempool:
+            if item in prec:
+                itempool.remove(item)
+                prec.remove(item)
 
         match self.options.unlock_method:
             case MissionUnlockMethod.option_missions:
                 # Add a number of mission unlock items equal to the mission count - 1
-                itempool.extend([self.create_item("Mission Unlock") for _ in range(self.options.mission_count.value - 1)])
+                itempool += [self.create_item("Mission Unlock") for _ in range(self.options.mission_count.value - 1)]
             case MissionUnlockMethod.option_ranks:
                 # Make sure we add the neon ranks that we need
                 total_ranks_clamp: int = min(self.options.total_ranks.value, loc_count - len(itempool))
@@ -213,12 +245,11 @@ class NeonWhiteWorld(World):
                 if (not getattr(self.multiworld, "re_gen_passthrough", {})):
                     self.ranks_required = int(total_ranks_clamp * (self.options.ranks_required_percent / 100))
 
-                itempool.extend([self.create_item("Neon Rank") for _ in range(total_ranks_clamp)])
+                itempool += [self.create_item("Neon Rank") for _ in range(total_ranks_clamp)]
             case MissionUnlockMethod.option_levels:
-                itempool.extend([self.create_item(x.name) for x in LEVEL_INFO.values() if not x.sidequest or self.options.sidequests])
+                itempool += [self.create_item(x.name) for x in LEVEL_INFO.values() if not x.sidequest or self.options.sidequests]
 
-        prec = self.multiworld.precollected_items[self.player].copy()
-
+        # 2nd cleanse: matters mostly for levels mode
         for item in itempool:
             if item in prec:
                 itempool.remove(item)
@@ -230,11 +261,24 @@ class NeonWhiteWorld(World):
         # Fill the rest with filler
         itempool += [self.create_item(x) for x in self.get_filler_rando(k=loc_count - len(itempool))]
 
-
         self.multiworld.itempool += itempool
 
     def get_filler_item_name(self) -> str:
         return self.get_filler_rando()[0]
+
+    def get_prefix(self, level: str) -> str:
+        if self.options.card_types == CardTypes.option_global:
+            return ""
+
+        missions = self.missions
+        if self.options.card_types == CardTypes.option_ingame_missions and not self.use_levels:
+            missions = [i for i in MISSION_INFO.values() if self.options.sidequests or not i.sidequest]
+
+        mission = next((m for m in missions if level in m.level_names), None)
+        if mission:
+            return f"{mission.name or mission.alias} - "
+        return ""
+
 
     def set_rules(self):
         set_rules(self.multiworld, self, self.options)
@@ -273,13 +317,14 @@ class NeonWhiteWorld(World):
                 key=lambda item: 0 if (item.name in mcguff and item.game == "Neon White") else 1)
 
     def extend_hint_information(self, hint_data: dict[int, dict[int, str]]):
-        hint_data[self.player] = {}
+        playerdata = {}
 
-        for location in self.multiworld.get_locations(self.player):
-            if location.address is not None and location.parent_region is not None:
-                p_region = location.parent_region
-                if p_region.name.startswith("Level: ") and p_region.entrances[0].parent_region is not None:
-                    hint_data[self.player][location.address] = f"{p_region.entrances[0].parent_region.name}"
+        for mission in self.missions:
+            for level in mission.levels:
+                for loc in level.regions[self.player].get_locations():
+                    playerdata[loc.address] = mission.alias or mission.name
+
+        hint_data[self.player] = playerdata
 
     def fill_slot_data(self):
         # pprint(self.missions)
@@ -305,13 +350,14 @@ class NeonWhiteWorld(World):
         options_to_show = [
             "difficulty_knowledge", "difficulty_execution", "boof_shenanigans",
             "medal_select", "gifts", "sidequests", "unlock_method", "goal",
+            "card_types",
             "death_link"]
 
         if self.options.death_link:
-            options_to_show.extend(["death_link_amn", "death_link_res"])
+            options_to_show += ["death_link_amn", "death_link_res"]
 
-        if self.options.death_link:
-            options_to_show.extend(["total_ranks"])
+        if self.options.unlock_method == MissionUnlockMethod.option_ranks:
+            options_to_show += ["total_ranks"]
 
         return {
             "early_levels": self.early_levels,
@@ -344,5 +390,6 @@ class NeonWhiteWorld(World):
             "boof_shenanigans": slot_data["options"]["boof_shenanigans"],
             "gifts": slot_data["options"]["gifts"],
             "sidequests": slot_data["options"]["sidequests"],
-            "medal_select": slot_data["options"]["medal_select"]
+            "medal_select": slot_data["options"]["medal_select"],
+            "card_types": slot_data["options"]["card_types"]
         } | extra

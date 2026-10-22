@@ -14,7 +14,7 @@ from Options import (
     Toggle,
 )
 
-from .info import MEDALS
+from .info import CAF, MEDALS
 
 
 class KnowledgeDifficulty(Choice):
@@ -67,6 +67,30 @@ class Sidequests(DefaultOnToggle):
     """
     Whether or not to make sidequest completions checks.
     """
+
+class CardTypes(Choice):
+    """
+    What card abilities should be placed in the multiworld.
+    See also Global Cards for fine-tuning the Missions types.
+    Global: 1 item for each ability that unlocks the ability for all levels.
+    Ingame Missions: An item for each ability that unlocks the ability on a per-mission (vanilla missions) basis.
+    Generated Missions: An item for each ability that unlocks the ability on a per-mission (your world's missions) basis.
+    """
+    display_name = "Card Ability Types"
+    option_global = 1
+    option_ingame_missions = 2
+    option_generated_missions = 3
+    default = 2
+
+class GlobalCards(OptionSet):
+    """
+    When using either of the "Missions" Card Ability Types, which cards to force to be global.
+    (e.g. if Katana is here, there is only one Katana item to get it for the entire game)
+    """
+    display_name = "Global Cards"
+    valid_keys = tuple([CAF.solo_to_string(x).casefold() for x in CAF])
+    valid_keys_casefold = True
+    default = {"Katana", "Book of Life"}
 
 class MissionUnlockMethod(Choice):
     """
@@ -137,13 +161,13 @@ class MissionCount(Range):
 class LevelGradient(Range):
     """
     The amount of "variance" in % to have in the random level selection for the ranks/mission unlock methods.
-    A lower value means, as the levels are selected, you will, on average, need more and more cards.
+    A lower value means as the levels are selected, you will, on average, need more and more cards.
     A higher value means much more randomness in the selection.
     """
     display_name = "Level Selection Variance"
     range_start = 0
     range_end = 100
-    default = 50
+    default = 30
 
 class Traps(DefaultOnToggle):
     """
@@ -205,6 +229,8 @@ class NeonWhiteOptions(PerGameCommonOptions):
     gifts: Gifts
     sidequests: Sidequests
     unlock_method: MissionUnlockMethod
+    card_types: CardTypes
+    global_cards: GlobalCards
     total_ranks: TotalRanks
     ranks_required_percent: RanksRequiredPercentage
     mission_count: MissionCount

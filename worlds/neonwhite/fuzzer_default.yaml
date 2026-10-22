@@ -1,0 +1,19 @@
+Neon White:
+  goal: 3bosses
+  difficulty_knowledge: standard
+  difficulty_execution: standard
+  gifts: true
+  sidequests: true
+  medal_select:
+    - bronze
+    - ace
+  unlock_method: ranks
+  total_ranks: 100
+  ranks_required_percent: 80
+  card_types: ingame_missions
+  level_gradient: 30
+  starting_level_count: 5
+  mission_count: 11
+  global_cards:
+    - Katana
+    - Book of Life
