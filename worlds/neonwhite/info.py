@@ -56,12 +56,12 @@ class CardAbilityFlags(IntFlag):
 
     def to_list(self) -> list[str]:
         return [
-            CardAbilityFlags.solo_to_string(x) for x in CardAbilityFlags if x in self
+            CardAbilityFlags.solo_to_string(x) for x in self
         ]
 
     def to_set(self) -> set[str]:
         return {
-            CardAbilityFlags.solo_to_string(x) for x in CardAbilityFlags if x in self
+            CardAbilityFlags.solo_to_string(x) for x in self
         }
 
     @staticmethod
@@ -72,8 +72,13 @@ class CardAbilityFlags(IntFlag):
         return ret
 
     # a copy of c#'s
-    def has_flags(self, other: "CardAbilityFlags") -> bool:
-        return self & other == self
+    def has_(self, other: "CardAbilityFlags") -> bool:
+        # __contains__ without the check
+        return self._value_ & other._value_ == self._value_
+
+    def or_(self, other: "CardAbilityFlags"):
+        # __or__ without the check
+        return CardAbilityFlags(self._value_ | other._value_)
 
     def to_rule(self) -> "Rule":
         # this is never hit bc it's checked for
@@ -313,7 +318,7 @@ LEVEL_INFO = {
 "Fortress":                 LevelInfo("GRID_FORTRESS",
     CAF.EverythingXBoof),
 "Holy Ground":              LevelInfo("GRID_GODTEMPLE_ENTRY",
-    CAF.Elevate | CAF.Godspeed | CAF.Stomp | CAF.Dominion),
+    CAF.EverythingXBoof & ~(CAF.Purify)),
 "The Third Temple":         LevelInfo("GRID_BOSS_GODSDEATHTEMPLE",
     CAF.Elevate | CAF.Stomp | CAF.Fireball | CAF.Dominion,
     giftless=True, alias="The Third Temple (Level)"),

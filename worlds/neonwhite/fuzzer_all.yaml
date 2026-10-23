@@ -1,0 +1,13 @@
+Neon White:
+  goal: 3bosses
+  # accessibility: full
+  difficulty_knowledge:
+    casual: 0
+    standard: 1
+    expert: 1
+    master: 1
+  difficulty_execution:
+    casual: 0
+    standard: 1
+    expert: 1
+    master: 1

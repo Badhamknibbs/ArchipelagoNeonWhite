@@ -20,10 +20,11 @@ Neon White:
     random-range-low-50-200: 1
   ranks_required_percent:
     random-range-10-80: 1
+  level_gradient:
+    random-range-0-50: 1
+  starting_level_count:
+    random-range-3-5: 1
   medal_select:
     - bronze
     - ace
-
-  fuzz_constraints:
-    - option: medal_select
-      ensure_any: ["bronze", "silver", "gold", "ace", "dev"]
+    - dev
