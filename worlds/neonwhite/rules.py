@@ -1,7 +1,7 @@
 import dataclasses
 import inspect
 from collections import deque
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from functools import partial, reduce
 from math import floor
 from operator import or_
@@ -13,7 +13,7 @@ from NetUtils import JSONMessagePart
 from rule_builder.rules import False_, Has, Rule, True_
 from typing_extensions import override
 
-from . import NeonWhiteOptions, data
+from . import NeonWhiteOptions
 from .info import LEVEL_INFO, CardAbilityFlags, Medal
 from .options import (
     MissionUnlockMethod,
@@ -66,11 +66,11 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
         elif not first:
             self._rule = self._true
 
-        if False:
+        if True:
             # debug check
             total = reduce(CardAbilityFlags.or_, reqs, CardAbilityFlags.FistOnly)  # pyright: ignore[reportUnreachable]
-            if not total.has_flags(LEVEL_INFO[level].cards):
-                raise Exception(f"{level}'s reqs are {total!r}, but only {LEVEL_INFO[level].cards!r} is valid")  # noqa: TRY002
+            assert (total.has_(LEVEL_INFO[level].cards)
+                ), f"{level}'s reqs are {total!r}, but only {LEVEL_INFO[level].cards!r} is valid"
 
     @staticmethod
     def _mkrl_key(itm: tuple[Any, set[CardAbilityFlags]]): return -len(itm[1])
@@ -112,7 +112,8 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
                     continue
                 cat = cat.or_(sCat)
 
-            res.appendleft((tuple(cat.to_list()), LevelReqRule._make_rule(frozenset(catr), ignore=ignore.or_(cat), depth=True)))
+            res.appendleft((tuple(cat.to_list()),
+                LevelReqRule._make_rule(frozenset(catr), ignore=ignore.or_(cat), depth=True)))
 
             for cat in cats:
                 cats[cat] -= catr
@@ -313,53 +314,6 @@ def import_json_to_data(world: "NeonWhiteWorld", know_diff: int, exec_diff: int)
     return new_requirements
 
 # Actual functions related to rules start here
-def level_rando(world: "NeonWhiteWorld", level_req: dict[str, set[str]], cards: set[str], k: int) -> Iterator[str]:
-    variance = world.options.level_gradient.value / 100.0
-
-    weights = {l: float(len(req - cards)) for l, req in level_req.items()}
-    if variance:
-        maxweights = max(x for x in weights.values())
-        for l in weights:
-            weights[l] *= 1 - variance
-            weights[l] += world.random.random() * maxweights * variance
-
-    change: set[str] = set()
-    diffmaxkey = lambda itm: len(itm[1])
-
-    for _ in range(k):
-        if not level_req:
-            yield "Absolution"
-            return
-        if change:
-            diff = list[str]()
-            for l, c in level_req.items():
-                if not c.isdisjoint(change):
-                    level_req[l] = c - change
-                    diff.append(l)
-            if diff:
-                # recalculate weights only for diff
-                # this has the effect of keeping things more 'themed'
-                if variance:
-                    maxweights = len(max(diff, key=diffmaxkey)[1])
-                    for l in diff:
-                        weights[l] = (1 - variance) * len(level_req[l]) + world.random.random() * maxweights * variance
-                else:
-                    for l in diff:
-                        weights[l] = float(len(level_req[l]))
-            change.clear()
-
-        # https://stackoverflow.com/a/3282904
-        # typechecker don't like .get
-        least = min(weights, key=weights.__getitem__)
-        # print(least, len(cards), level_req[least])
-        newc = level_req[least]
-        change = newc - cards
-        cards |= newc
-        del level_req[least]
-        del weights[least]
-        yield least
-
-
 # Mission is 1-indexed
 def get_mission_rank_required(world: "NeonWhiteWorld", mission: int) -> int:
     # Neon rank requirement is exponential

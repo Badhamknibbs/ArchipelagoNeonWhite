@@ -40,13 +40,12 @@ from .options import (
     MissionUnlockMethod,
     NeonWhiteOptions,
 )
-from .regions import create_regions
+from .regions import create_regions, level_rando
 from .rules import (
     LevelRequirementSet,
     Medal,
     get_mission_rank_required,
     import_json_to_data,
-    level_rando,
     set_rules,
 )
 
