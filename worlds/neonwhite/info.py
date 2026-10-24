@@ -38,8 +38,6 @@ class CardAbilityFlags(IntFlag):
 
     @staticmethod
     def solo_to_string(solo: "CardAbilityFlags", prefix="") -> str:
-        if solo not in CARDABILITY_STR:
-            return "Unknown Card"
         return prefix + CARDABILITY_STR[solo]
 
     @staticmethod
@@ -54,14 +52,22 @@ class CardAbilityFlags(IntFlag):
             return CardAbilityFlags.BookOfLife
         return CardAbilityFlags.FistOnly
 
+    def __str__(self) -> str:
+        return CARDABILITY_STR[self]
+
     def to_list(self) -> list[str]:
+        if self.bit_count() == 1:
+            return [str(self)]
         return [
-            CardAbilityFlags.solo_to_string(x) for x in self
+            str(x) for x in self
         ]
 
     def to_set(self) -> set[str]:
+        if self.bit_count() == 1:
+            return {str(self)}
+
         return {
-            CardAbilityFlags.solo_to_string(x) for x in self
+            str(x) for x in self
         }
 
     @staticmethod
@@ -80,13 +86,27 @@ class CardAbilityFlags(IntFlag):
         # __or__ without the check
         return CardAbilityFlags(self._value_ | other._value_)
 
-    def to_rule(self) -> "Rule":
+    def and_(self, other: "CardAbilityFlags"):
+        # __and__ without the check
+        return CardAbilityFlags(self._value_ & other._value_)
+
+    def remove_(self, other: "CardAbilityFlags"):
+        # fast __and__ with __invert__
+        return CardAbilityFlags(self._value_ & ~other._value_)
+
+    def to_rule(self, prefix="", globals: "CardAbilityFlags" = None) -> "Rule":  # pyright: ignore[reportArgumentType]
         # this is never hit bc it's checked for
         # if self.count == 0:
         #     return True_()
-        if self.bit_count() == 1:
-            return Has(CardAbilityFlags.solo_to_string(self))
-        return HasAll(*self.to_list())
+
+        if not prefix:
+            if self.bit_count() == 1:
+                return Has(str(self))
+            return HasAll(*[str(x) for x in self])
+        else:
+            if self.bit_count() == 1:
+                return Has((prefix if not self.has_(globals) else "") + str(self))
+            return HasAll(*[(prefix if not x.has_(globals) else "") + str(x) for x in self])
 
 CAF = CardAbilityFlags
 
@@ -138,7 +158,7 @@ class LevelInfo:
 
     def __post_init__(self):
         self.regions = {}
-        self.cards |= CardAbilityFlags.Katana
+        self.cards = self.cards.or_(CardAbilityFlags.Katana)
         if self.sidequest:
             self.giftless = True
 
@@ -427,7 +447,7 @@ class MissionInfo:
         self.regions = {}
         self.levels = tuple([LEVEL_INFO[level] for level in self.level_names])
         for level in self.levels:
-            self.cards |= level.cards
+            self.cards = self.cards.or_(level.cards)
 
 MISSION_INFO = {
     "Rebirth": MissionInfo(

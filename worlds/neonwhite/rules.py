@@ -1,11 +1,12 @@
 import dataclasses
-import json
+import inspect
 from collections import deque
 from collections.abc import Callable, Iterator
 from functools import partial, reduce
 from math import floor
+from operator import or_
 from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeAlias, final
-from weakref import WeakValueDictionary
+from weakref import WeakKeyDictionary, WeakValueDictionary
 
 from BaseClasses import CollectionState, Location, MultiWorld
 from NetUtils import JSONMessagePart
@@ -28,9 +29,11 @@ RES_T: TypeAlias = deque[tuple[tuple[str, ...], "RES_F"]]
 class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
     reqs: frozenset[CardAbilityFlags] = dataclasses.field(init=False)
     level: str = dataclasses.field(init=False)
+    _rule: Rule | None = dataclasses.field(init=False)
     _reqstotal: CardAbilityFlags = dataclasses.field(init=False)
     _built: RES_F | None = dataclasses.field(init=False)
-    _resregistry: WeakValueDictionary = dataclasses.field(init=False)
+    _oreligible: bool = dataclasses.field(init=False)
+    _resregistry: WeakKeyDictionary = dataclasses.field(init=False)
 
     # https://stackoverflow.com/a/71563134
     _registry: ClassVar[WeakValueDictionary] = WeakValueDictionary()
@@ -41,26 +44,47 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
         cls._registry[args] = i
         return i
 
+    _true: ClassVar[Rule] = True_()
+    _false: ClassVar[Rule] = False_()
+
     def __init__(self, reqs: frozenset[CardAbilityFlags], level: str) -> None:
         if hasattr(self, "_rule"):
             return
         self.reqs = reqs
         self.level = level
-        self._reqstotal = reduce(CardAbilityFlags.or_, self.reqs, CardAbilityFlags.FistOnly)
+        self._reqstotal = CardAbilityFlags.FistOnly
+        for x in reqs:
+            self._reqstotal = self._reqstotal.or_(x)
         self._built = None
-        self._resregistry = WeakValueDictionary()
+        self._oreligible = True
+        self._resregistry = WeakKeyDictionary()
+
+        self._rule = None
+        first = next(iter(self.reqs), None)
+        if first is None:
+            self._rule = self._false
+        elif not first:
+            self._rule = self._true
+
         if False:
             # debug check
             total = reduce(CardAbilityFlags.or_, reqs, CardAbilityFlags.FistOnly)  # pyright: ignore[reportUnreachable]
             if not total.has_flags(LEVEL_INFO[level].cards):
                 raise Exception(f"{level}'s reqs are {total!r}, but only {LEVEL_INFO[level].cards!r} is valid")  # noqa: TRY002
 
+    @staticmethod
+    def _mkrl_key(itm: tuple[Any, set[CardAbilityFlags]]): return -len(itm[1])
 
     @staticmethod
     # @lru_cache(maxsize=512) # enable when this ends up being more expensive
-    def _make_rule(reqs: frozenset[CardAbilityFlags], ignore = CardAbilityFlags.FistOnly) -> RES_F:
+    def _make_rule(reqs: frozenset[CardAbilityFlags], ignore = CardAbilityFlags.FistOnly, *, depth=False) -> RES_F:
         # print("CALLB", reqs, ignore)
-        total = reduce(CardAbilityFlags.or_, reqs, CardAbilityFlags.FistOnly) & ~ignore
+
+        total = CardAbilityFlags.FistOnly
+        for x in reqs:
+            total = total.or_(x)
+        total = total.remove_(ignore)
+
         consumed = set[CardAbilityFlags]()
         cats = {
             x: {r for r in reqs if x.has_(r)}
@@ -69,9 +93,10 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
 
         res: RES_T = deque()
 
-        key=lambda itm: len(itm[1])
+        key=LevelReqRule._mkrl_key
+
         while True:
-            s = sorted(cats.items(), key=key, reverse=True)
+            s = sorted(cats.items(), key=key)
 
             catr = s[0][1].copy()
             catrlen = len(catr)
@@ -85,30 +110,27 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
                     break
                 if (sCatr != catr):
                     continue
-                cat |= sCat
+                cat = cat.or_(sCat)
 
-            res.appendleft((tuple(cat.to_list()), LevelReqRule._make_rule(frozenset(catr), ignore=ignore | cat)))
+            res.appendleft((tuple(cat.to_list()), LevelReqRule._make_rule(frozenset(catr), ignore=ignore.or_(cat), depth=True)))
 
-            for cat in total:
+            for cat in cats:
                 cats[cat] -= catr
             consumed |= catr
 
+        if not depth and not res:
+            # we didn't do shit; we're eligible for just using raw rules
+            return ()
+
         res.extendleft([(tuple(r.to_list()), None)
             for r in
-            sorted(((x & ~ignore) for x in reqs if x not in consumed), key=CardAbilityFlags.bit_count)])
+            sorted(((x.remove_(ignore)) for x in reqs if x not in consumed), key=CardAbilityFlags.bit_count)])
 
         return tuple(res)
 
     @staticmethod
-    def _merge_O(rule: Rule, req: CardAbilityFlags) -> Rule:
-        return req.to_rule() | rule
-
-    def _make_rule_O(self) -> "Rule":
-        return reduce(LevelReqRule._merge_O, sorted(self.reqs, key=lambda x: x.bit_count(), reverse=True), False_())
-
-    @staticmethod
     def _translate(resf: RES_F, prefix: str, globals: set[str]) -> RES_F:
-        if not resf:
+        if not prefix or not resf:
             return resf
         rest = []
         for items, dig in resf:
@@ -118,21 +140,41 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
 
     @override
     def _instantiate(self, world: "NeonWhiteWorld") -> Rule.Resolved:
-        whash = hash(world)
-        if whash in self._resregistry:
-            return self._resregistry[whash]
+        if world in self._resregistry:
+            return self._resregistry[world]
 
-        if not self.reqs:
-            res = False_().resolve(world)
-        elif not next(iter(self.reqs)):
-            res = True_().resolve(world)
+        if self._rule is not None:
+            res = self._rule.Resolved(player=world.player)
+        elif self._built is None:
+            self._built = self._make_rule(self.reqs)
+            self._oreligible = True
+            for _, dig in self._built:  # pyright: ignore[reportOptionalIterable]
+                if dig:
+                    self._oreligible = False
+                    break
+
+            return self._instantiate(world)
         else:
-            if self._built is None:
-                self._built = self._make_rule(self.reqs)
-
             prefix = world.get_prefix(self.level)
-            trimmed = world.global_cards & self._reqstotal
-            if trimmed == self._reqstotal or not prefix:
+            trimmed = world.global_cards.and_(self._reqstotal)
+
+            if self._oreligible:
+                if len(self.reqs) == 1:
+                    res = next(iter(self.reqs)).to_rule(prefix, trimmed).resolve(world)
+                else:
+                    res = reduce(or_, [x.to_rule(prefix, trimmed) for x in self.reqs]).resolve(world)
+
+                if inspect.isfunction(res.explain_json):
+                    object.__setattr__(res, 'explain_json', partial(
+                        self.explain_json,
+                        self.reqs,
+                        prefix,
+                        trimmed
+                    ))
+
+            elif trimmed == self._reqstotal or not prefix:
+                prefix = world.get_prefix(self.level)
+                trimmed = world.global_cards.and_(self._reqstotal)
                 res = self.Resolved(
                     self.reqs,
                     self._built,
@@ -142,13 +184,18 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
             else:
                 res = self.Resolved(
                     self.reqs,
-                    LevelReqRule._translate(self._built, prefix, trimmed.to_set()),
+                    self._translate(self._built, prefix, trimmed.to_set()),
                     prefix,
                     trimmed,
                     player=world.player)
 
-        self._resregistry[whash] = res
+        self._resregistry[world] = res
         return res
+
+    @staticmethod
+    def explain_json(reqs: frozenset[CardAbilityFlags], prefix: str, globals: CardAbilityFlags,
+        rule: Rule.Resolved, state: CollectionState | None = None) -> list[JSONMessagePart]:
+            return [] # todo
 
     class Resolved(Rule.Resolved):
         reqs: frozenset[CardAbilityFlags]
@@ -179,7 +226,7 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
 
         @override
         def item_dependencies(self) -> dict[str, set[int]]:
-            total = reduce(CardAbilityFlags.or_, self.reqs, CardAbilityFlags.FistOnly)
+            total = reduce(CardAbilityFlags.or_, self.reqs)
             return {
                 CardAbilityFlags.solo_to_string(c, self.prefix if not c.has_(self.globals) else ""): {id(self)}
                 for c in total
@@ -187,7 +234,7 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
 
         @override
         def explain_json(self, state: CollectionState | None = None) -> list[JSONMessagePart]:
-            return [] # TODO this is easy it's just 5:43am
+            return LevelReqRule.explain_json(self.reqs, self.prefix, self.globals, self, state)
 
 # This only represents a single difficulty
 @final
@@ -195,57 +242,53 @@ class LevelRequirementSet:
     def __init__(self):
         # String is the level name, list is 0..5, in order: dev,ace,gold,silver,bronze,gift
         self.requirements = dict[str, list[LevelReqRule]]()
+        self._itemcache: WeakKeyDictionary[NeonWhiteWorld, dict[str, dict[Medal, set[str]]]] = WeakKeyDictionary()
 
-    # Note - Medal 0-4 is dev-bronze, 5 is gift
-    # Cards are what is available at that point
-    def can_complete_level(self, level: str, medal: Medal, cards: CardAbilityFlags) -> bool:
-        medal_idx = int(medal) if medal == Medal.Gift else 4 - int(medal)
-
-        for solution in self.requirements[level][medal_idx].reqs:
-            # Bitwise check, e.g. 0001 & 1111 == 0001, success; 1001 & 0101 == 0001, failure
-            # If Fist-Only is a solution, & will return 0 (because it's all zeroes) and thus will == 0, always success
-            if solution & cards == solution:
-                return True
-        return False
+    def nuke_cache(self, world: "NeonWhiteWorld"):
+        self._itemcache[world].clear()
 
     def make_rule(self, level: str, medal: Medal) -> LevelReqRule:
         medal_idx = int(medal) if medal == Medal.Gift else 4 - int(medal)
 
         return self.requirements[level][medal_idx]
 
-    def get_necessary_items(self, level: str, medal: Medal) -> frozenset[CardAbilityFlags]:
-        medal_idx = int(medal) if medal == Medal.Gift else 4 - int(medal)
-        return self.requirements[level][medal_idx].reqs
-
     def get_useful_items(self, world: "NeonWhiteWorld", level: str, medal: Medal | None) -> set[str]:
         if medal is None:
-            ret = self.get_useful_items(world, level, max([Medal(x) for x in world.options.medal_select]))
+            ret = self.get_useful_items(world, level, world.medalmax)
             if world.options.gifts and not LEVEL_INFO[level].giftless:
                 return ret | self.get_useful_items(world, level, Medal.Gift)
             return ret
 
+        cache = self._itemcache.get(world, {}).get(level, {})
+        if medal in cache:
+            return cache[medal]
+
+        medal_idx = int(medal) if medal == Medal.Gift else 4 - int(medal)
+        flags = self.requirements[level][medal_idx].reqs
+        if not flags:
+            self._itemcache.setdefault(world, {}).setdefault(level, {})[medal] = set()
+            return set()
+
         cards = set()
-        total = reduce(CardAbilityFlags.or_, self.get_necessary_items(level, medal), CardAbilityFlags.FistOnly)
+        total = CardAbilityFlags.FistOnly
+        for x in flags:
+            total = total.or_(x)
+
         prefix = world.get_prefix(level)
         for c in total:
-            cards.add(CardAbilityFlags.solo_to_string(c, prefix if not c.has_(world.global_cards) else ""))
+            cards.add(CardAbilityFlags.solo_to_string(c, prefix if prefix and not c.has_(world.global_cards) else ""))
 
+        self._itemcache.setdefault(world, {}).setdefault(level, {})[medal] = cards
         return cards
 
+    def __str__(self) -> str:
+        return f"LevelReqRule({self.requirements})"
 
-NWJSON_DATA: Any = {}
-
-def import_json_to_data(know_diff: int, exec_diff: int) -> LevelRequirementSet:
-    global NWJSON_DATA
-    if not NWJSON_DATA:
-        # See archipelago requirements sheet for formatting
-        from importlib.resources import files
-        file = files(data).joinpath("nw_cr.json").open()
-        NWJSON_DATA = json.loads(file.read())
+def import_json_to_data(world: "NeonWhiteWorld", know_diff: int, exec_diff: int) -> LevelRequirementSet:
     new_requirements = LevelRequirementSet()
-    for entry in NWJSON_DATA:
+    for entry in world.logic_json:
         solutions = [set[CardAbilityFlags]() for _ in range(6)]
-        for solution in NWJSON_DATA[entry]:
+        for solution in world.logic_json[entry]:
             capped: int = solution["m"]
             if CardAbilityFlags.FistOnly in solutions[capped]:
                 continue # don't even bother
@@ -270,38 +313,50 @@ def import_json_to_data(know_diff: int, exec_diff: int) -> LevelRequirementSet:
     return new_requirements
 
 # Actual functions related to rules start here
-def level_rando(world: "NeonWhiteWorld", level_req: dict[str, set[str]], cards: set[str], k: int, *,
-    shuffled: list[tuple[str, set[str]]] | None = None) -> Iterator[str]:
-    variance = float(world.options.level_gradient) / 100
-    if not shuffled:
-        shuffled = list(level_req.items())
-        world.random.shuffle(shuffled)
+def level_rando(world: "NeonWhiteWorld", level_req: dict[str, set[str]], cards: set[str], k: int) -> Iterator[str]:
+    variance = world.options.level_gradient.value / 100.0
 
-    weights = {l: float(len(req - cards)) for l, req in shuffled}
-    maxweights = max(x for x in weights.values())
-    for l in weights:
-        weights[l] *= 1 - variance
-        weights[l] += world.random.uniform(0, maxweights) * variance
+    weights = {l: float(len(req - cards)) for l, req in level_req.items()}
+    if variance:
+        maxweights = max(x for x in weights.values())
+        for l in weights:
+            weights[l] *= 1 - variance
+            weights[l] += world.random.random() * maxweights * variance
 
-    change = False
-    for i in range(k):
+    change: set[str] = set()
+    diffmaxkey = lambda itm: len(itm[1])
+
+    for _ in range(k):
         if not level_req:
             yield "Absolution"
             return
         if change:
-            yield from level_rando(world, level_req, cards, k - i, shuffled=shuffled)
-            return
+            diff = list[str]()
+            for l, c in level_req.items():
+                if not c.isdisjoint(change):
+                    level_req[l] = c - change
+                    diff.append(l)
+            if diff:
+                # recalculate weights only for diff
+                # this has the effect of keeping things more 'themed'
+                if variance:
+                    maxweights = len(max(diff, key=diffmaxkey)[1])
+                    for l in diff:
+                        weights[l] = (1 - variance) * len(level_req[l]) + world.random.random() * maxweights * variance
+                else:
+                    for l in diff:
+                        weights[l] = float(len(level_req[l]))
+            change.clear()
 
         # https://stackoverflow.com/a/3282904
         # typechecker don't like .get
         least = min(weights, key=weights.__getitem__)
         # print(least, len(cards), level_req[least])
         newc = level_req[least]
-        change = not newc.issubset(cards)
-        cards |= level_req[least]
+        change = newc - cards
+        cards |= newc
         del level_req[least]
         del weights[least]
-        shuffled.remove((least, newc))
         yield least
 
 
@@ -315,7 +370,7 @@ def get_mission_rank_required(world: "NeonWhiteWorld", mission: int) -> int:
     #       divide it by mission count and multiply the equation by rank total (floor fractions)
     #    E.g. 11 missions, 343 total ranks:
     #    y = ((v^((x-1) / 11) - 1) / (v - 1)) * 343
-    mission_fraction: float = mission / world.options.mission_count
+    mission_fraction: float = float(mission) / world.options.mission_count.value
     lenience_value = 10 # How sharp the curve is, higher = slower rank req but sharper spike near the end
     normal_value = (pow(lenience_value, mission_fraction) - 1) / (lenience_value - 1)
     return floor(world.ranks_required * normal_value)
@@ -327,9 +382,6 @@ def _set_rule(world: "NeonWhiteWorld", medal: Medal, level: str, location: Locat
     location.access_rule = rule
 
 def set_rules(multiworld: MultiWorld, world: "NeonWhiteWorld", options: NeonWhiteOptions):
-    medals = [Medal(x) for x in options.medal_select]
-    maxmedal = max(medals, default=Medal.Bronze)
-
     # Connect central heaven to every mission
     for i, mission in enumerate(world.missions):
         entrance = mission.regions[world.player].entrances[0]
@@ -352,7 +404,7 @@ def set_rules(multiworld: MultiWorld, world: "NeonWhiteWorld", options: NeonWhit
             if not level.sidequest:
                 setters: dict[str, Callable[[Location]]] = {
                     f"{level.name} {medal.name} Completion": partial(_set_rule, world, medal, level.name)
-                    for medal in medals
+                    for medal in world.medals
                 }
                 if options.gifts and not level.giftless:
                     setters[f"{level.name} Gift"] = partial(_set_rule, world, Medal.Gift, level.name)
@@ -360,4 +412,4 @@ def set_rules(multiworld: MultiWorld, world: "NeonWhiteWorld", options: NeonWhit
                 for location in level_region.get_locations():
                     setters[location.name](location)
             else:
-                _set_rule(world, maxmedal, level.name, level_region.get_locations()[0])
+                _set_rule(world, world.medalmax, level.name, level_region.get_locations()[0])

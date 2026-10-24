@@ -8,8 +8,13 @@ class NWLocation(Location):
     game: str = "Neon White"
     starting_id: int = 500
 
+nw_locations: dict[str, int] = {}
 
 def neon_white_get_locations() -> dict[str, int]:
+    global nw_locations
+    if nw_locations:
+        return nw_locations
+
     locations_dict: dict[str, int] = {}
     level_id = NWLocation.starting_id
 
@@ -25,7 +30,8 @@ def neon_white_get_locations() -> dict[str, int]:
             locations_dict[level + " Completion"] = level_id
             level_id += 1
 
-    return locations_dict
+    nw_locations = locations_dict
+    return nw_locations
 
 
 checks_in_sets_lvl = {

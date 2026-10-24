@@ -29,17 +29,14 @@ def create_regions(multiworld: MultiWorld, world: "NeonWhiteWorld", options: Neo
         for level in mission.levels:
             check_region = Region(level.alias or level.name, world.player, multiworld)
             if not level.sidequest:
-                for medal in options.medal_select:
-                    check_name: str = level.name + " " + medal.title() + " Completion"
-                    new_location = NWLocation(world.player, check_name, neon_white_locations[check_name], check_region)
-                    # Make the highest medal a priority location
-                    #if medal == options.medal_cap - 1: new_location.progress_type = LocationProgressType.PRIORITY
-                    check_region.locations.append(new_location)
+                check_names = [f"{level.name} {medal.name.title()} Completion" for medal in world.medals]
                 if options.gifts and not level.giftless:
-                    check_name = level.name + " Gift"
-                    new_location = NWLocation(world.player, check_name, neon_white_locations[check_name], check_region)
-                    #new_location.progress_type = LocationProgressType.PRIORITY
-                    check_region.locations.append(new_location)
+                    check_names.append(level.name + " Gift")
+
+                check_region.locations.extend([
+                    NWLocation(world.player, check_name, neon_white_locations[check_name], check_region)
+                    for check_name in check_names
+                ])
             else:
                 check_name = level.name + " Completion"
                 new_location = NWLocation(world.player, check_name, neon_white_locations[check_name], check_region)

@@ -31,7 +31,7 @@ def get_items_from_category(category: str) -> Iterable[str]:
             yield name
 
 nw_items: dict[str, NWItemData] = {
-    CAF.solo_to_string(x): NWItemData("Global Card", NWItem.card_id + x.bit_length(), NWItem.card_classification)
+    CAF.solo_to_string(x): NWItemData("Global Card", NWItem.card_id + x.bit_count(), NWItem.card_classification)
     for x in CAF
 } | {
     "Neon Rank":            NWItemData("Progression", NWItem.prog_id + 0,
@@ -68,7 +68,7 @@ nw_items: dict[str, NWItemData] = {
 } | {
     name: NWItemData("In-game Mission Card", NWItem.mission_card_id + id, NWItem.card_classification)
     for (name, id) in itertools.chain.from_iterable(
-        [[(f"{mission.name} - {CAF.solo_to_string(card)}", (i * 100) + card.bit_length())
+        [[(f"{mission.name} - {CAF.solo_to_string(card)}", (i * 100) + card.bit_count())
             for card in mission.cards]
             for i, mission in enumerate(MISSION_INFO.values())
         ]
@@ -76,7 +76,7 @@ nw_items: dict[str, NWItemData] = {
 } | {
     name: NWItemData("Generated Mission Card", NWItem.fission_card_id + id, NWItem.card_classification)
     for (name, id) in itertools.chain.from_iterable(
-        [[(f"Mission {i + 1} - {CAF.solo_to_string(card)}", (i * 100) + card.bit_length())
+        [[(f"Mission {i + 1} - {CAF.solo_to_string(card)}", (i * 100) + card.bit_count())
             for card in CAF]
             for i in range(MissionCount.range_end)
         ]
