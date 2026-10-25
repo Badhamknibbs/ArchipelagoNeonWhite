@@ -196,7 +196,7 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
     @staticmethod
     def explain_json(reqs: frozenset[CardAbilityFlags], prefix: str, globals: CardAbilityFlags,
         rule: Rule.Resolved, state: CollectionState | None = None) -> list[JSONMessagePart]:
-            return [] # todo
+            return [{'text': repr(r)} for r in reqs]
 
     class Resolved(Rule.Resolved):
         reqs: frozenset[CardAbilityFlags]
@@ -236,6 +236,9 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
         @override
         def explain_json(self, state: CollectionState | None = None) -> list[JSONMessagePart]:
             return LevelReqRule.explain_json(self.reqs, self.prefix, self.globals, self, state)
+
+        def __str__(self):
+            return str(self.built)
 
 # This only represents a single difficulty
 @final

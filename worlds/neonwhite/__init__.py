@@ -101,8 +101,6 @@ class NeonWhiteWorld(World):
         self.get_prefix: Callable[[str], str] = lambda _: ""
 
     def generate_early(self) -> None:
-        print(self.random.getstate())
-
         if not self.player_name.isascii():
             raise OptionError("Neon White yaml's slot name has invalid character(s).")
         if not all(x in nw_item_groups["Filler"] for x in self.options.filler_weights):
@@ -114,7 +112,7 @@ class NeonWhiteWorld(World):
         if (self.game in ut_regen):
             ut_regen: dict[str, Any] = ut_regen[self.game]
             print(f"UT_REGEN: {ut_regen}")
-            # self.ordered_levels = ut_regen["levels"]
+            self.ordered_levels = ut_regen["levels"]
             self.ranks_required = ut_regen.get("rank_requirement", 0)
 
             # from the UT docs (sorry mario sunshine)
@@ -174,8 +172,6 @@ class NeonWhiteWorld(World):
     def create_regions(self):
         # create levels and missions
 
-        print(self.random.getstate())
-
         if self.use_levels:
             self.missions = self.missions_vanilla
             create_regions(self.multiworld, self, self.options)
@@ -206,7 +202,6 @@ class NeonWhiteWorld(World):
             litems = list(levels.items())
             self.random.shuffle(litems)
             levels = dict(litems)
-            print(levels)
         else:
             total_level_count = len(self.ordered_levels)
 
@@ -296,6 +291,8 @@ class NeonWhiteWorld(World):
         if self.options.card_types.value == CardTypes.option_generated_missions:
             self.requirement.nuke_cache(self)
 
+        # print(self.missions)
+
         create_regions(self.multiworld, self, self.options)
 
     def get_filler_rando(self, k: int = 1):
@@ -366,8 +363,6 @@ class NeonWhiteWorld(World):
         # Fill the rest with filler
         itempool += [self.create_item(x) for x in self.get_filler_rando(k=loc_count - len(itempool))]
 
-        print(itempool)
-
         self.multiworld.itempool += itempool
 
     def get_filler_item_name(self) -> str:
@@ -405,10 +400,20 @@ class NeonWhiteWorld(World):
                     case MissionUnlockMethod.option_levels:
                         rule = Has("Absolution") & Has("The Third Temple") & Has("The Clocktower")
 
-                rule &= postreq  # pyright: ignore[reportOperatorIssue]
+                rule &= postreq  # pyright: ignore[reportOperatorIssue]/
 
         if rule is None:
             raise OptionError("End goal not configured")
+
+        for mission in self.missions:
+            print("- " + str(list(mission.regions[self.player].exits)))
+            print(": " + str(mission.regions[self.player].entrances[0].access_rule))
+
+            for level in mission.levels:
+                for loc in level.regions[self.player].locations:
+                    print("  - " + loc.name)
+                    print("  : " + str(loc.access_rule))
+
 
         self.set_completion_rule(rule)
 
@@ -417,7 +422,6 @@ class NeonWhiteWorld(World):
             usefulitempool: list[Item],
             filleritempool: list[Item],
             fill_locations: list[Location]):
-
         # order every item to be as we want it to help fill gen
         # **keeping our items in the same general position across the multiworld**
 
@@ -515,7 +519,7 @@ class NeonWhiteWorld(World):
         options_to_show = [
             # "start_inventory", "start_inventory_from_pool", # these do influence level order
             "difficulty_knowledge", "difficulty_execution", # "boof_shenanigans",
-            "medal_select", "gifts", "sidequests", "starting_level_count", "level_gradient",
+            "medal_select", "gifts", "sidequests", "starting_level_count",
             "unlock_method", "goal", "card_types",
             "death_link"]
 
@@ -563,7 +567,6 @@ class NeonWhiteWorld(World):
             "difficulty_execution": slot_data["options"]["difficulty_execution"],
             # "boof_shenanigans": slot_data["options"]["boof_shenanigans"],
             "starting_level_count": slot_data["options"]["starting_level_count"],
-            "level_gradient": slot_data["options"]["level_gradient"],
             "gifts": slot_data["options"]["gifts"],
             "sidequests": slot_data["options"]["sidequests"],
             "medal_select": slot_data["options"]["medal_select"],
