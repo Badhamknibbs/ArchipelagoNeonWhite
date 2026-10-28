@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from enum import IntEnum, IntFlag, auto
-from pprint import pprint
 
 from BaseClasses import Region
 from rule_builder.rules import Has, HasAll, Rule
@@ -430,7 +429,6 @@ if not _LEVELIMPORT:
     _LEVELIMPORT = True
     for (name, level) in LEVEL_INFO.items():
         level.name = name
-        # print(level)
 
 @dataclass(slots=True)
 class MissionInfo:
@@ -590,17 +588,6 @@ MISSION_INFO = {
             "Dominion Traversal",
             "Book of Life Traversal",
         ), sidequest=True),
-    "Violet Sidequests": MissionInfo(
-        (
-            "Doghouse",
-            "Choker",
-            "Chain",
-            "Hellevator",
-            "Razor",
-            "All Seeing Eye",
-            "Resident Saw I",
-            "Resident Saw II",
-        ), sidequest=True),
     "Yellow Sidequests": MissionInfo(
         (
             "Sunset Flip Powerbomb",
@@ -611,6 +598,17 @@ MISSION_INFO = {
             "Arena",
             "Attitude Adjustment",
             "Rocket"
+        ), sidequest=True),
+    "Violet Sidequests": MissionInfo(
+        (
+            "Doghouse",
+            "Choker",
+            "Chain",
+            "Hellevator",
+            "Razor",
+            "All Seeing Eye",
+            "Resident Saw I",
+            "Resident Saw II",
         ), sidequest=True),
 }
 

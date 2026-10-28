@@ -78,8 +78,6 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
     @staticmethod
     # @lru_cache(maxsize=512) # enable when this ends up being more expensive
     def _make_rule(reqs: frozenset[CardAbilityFlags], ignore = CardAbilityFlags.FistOnly, *, depth=False) -> RES_F:
-        # print("CALLB", reqs, ignore)
-
         total = CardAbilityFlags.FistOnly
         for x in reqs:
             total = total.or_(x)
@@ -249,7 +247,8 @@ class LevelRequirementSet:
         self._itemcache: WeakKeyDictionary[NeonWhiteWorld, dict[str, dict[Medal, set[str]]]] = WeakKeyDictionary()
 
     def nuke_cache(self, world: "NeonWhiteWorld"):
-        self._itemcache[world].clear()
+        if world in self._itemcache:
+            self._itemcache[world].clear()
 
     def make_rule(self, level: str, medal: Medal) -> LevelReqRule:
         medal_idx = int(medal) if medal == Medal.Gift else 4 - int(medal)
@@ -258,7 +257,9 @@ class LevelRequirementSet:
 
     def get_useful_items(self, world: "NeonWhiteWorld", level: str, medal: Medal | None) -> set[str]:
         if medal is None:
-            ret = self.get_useful_items(world, level, world.medalmax)
+            ret = set[str]()
+            for wmedal in world.medals:
+                ret |= self.get_useful_items(world, level, wmedal)
             if world.options.gifts and not LEVEL_INFO[level].giftless:
                 return ret | self.get_useful_items(world, level, Medal.Gift)
             return ret

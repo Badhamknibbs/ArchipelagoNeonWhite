@@ -111,9 +111,9 @@ class NeonWhiteWorld(World):
         ut_regen = getattr(self.multiworld, "re_gen_passthrough", {})
         if (self.game in ut_regen):
             ut_regen: dict[str, Any] = ut_regen[self.game]
-            print(f"UT_REGEN: {ut_regen}")
             self.ordered_levels = ut_regen["levels"]
             self.ranks_required = ut_regen.get("rank_requirement", 0)
+            self.global_cards = CardAbilityFlags(ut_regen.get("global_cards_flags", 0))
 
             # from the UT docs (sorry mario sunshine)
             for key, value in ut_regen.items():
@@ -149,21 +149,22 @@ class NeonWhiteWorld(World):
         if (self.options.difficulty_execution.value <= ExecutionDifficulty.option_casual):
             self.multiworld.push_precollected(self.create_item("Katana"))
 
-        self.global_cards = CardAbilityFlags.FistOnly
-        prec = self.multiworld.precollected_items[self.player]
+        if not ut_regen:
+            self.global_cards = CardAbilityFlags.FistOnly
+            prec = self.multiworld.precollected_items[self.player]
 
-        if (self.options.card_types != CardTypes.option_global):
-            gcardset = set(get_items_from_category("Global Card"))
-            mygcards = self.options.global_cards.value
+            if (self.options.card_types != CardTypes.option_global):
+                gcardset = set(get_items_from_category("Global Card"))
+                mygcards = self.options.global_cards.value
 
-            for item in prec:
-                if item.name in gcardset:
-                    mygcards.add(item.name)
+                for item in prec:
+                    if item.name in gcardset:
+                        mygcards.add(item.name)
 
-            csfold = {x.casefold(): x for x in get_items_from_category("Global Card")}
+                csfold = {x.casefold(): x for x in get_items_from_category("Global Card")}
 
-            for card in mygcards:
-                self.global_cards |= CardAbilityFlags(1 << (nw_items[csfold[card.casefold()]].id % 100 - 1))
+                for card in mygcards:
+                    self.global_cards |= CardAbilityFlags(1 << (nw_items[csfold[card.casefold()]].id % 100 - 1))
 
     def create_item(self, name: str, force_useful: bool = False) -> NWItem:
         classific = ItemClassification.useful if force_useful else nw_items[name].classification
@@ -291,13 +292,10 @@ class NeonWhiteWorld(World):
         if self.options.card_types.value == CardTypes.option_generated_missions:
             self.requirement.nuke_cache(self)
 
-        # print(self.missions)
-
         create_regions(self.multiworld, self, self.options)
 
     def get_filler_rando(self, k: int = 1):
         fillers = self.options.filler_weights.value
-        print(fillers)
         choices = self.random.choices(list(fillers.keys()), weights=list(fillers.values()), k=k)
         genc = choices.count("Generic")
         generics = [x for x in sorted(nw_item_groups["Filler"]) if nw_items[x].id % 100 < 50]
@@ -405,16 +403,6 @@ class NeonWhiteWorld(World):
         if rule is None:
             raise OptionError("End goal not configured")
 
-        for mission in self.missions:
-            print("- " + str(list(mission.regions[self.player].exits)))
-            print(": " + str(mission.regions[self.player].entrances[0].access_rule))
-
-            for level in mission.levels:
-                for loc in level.regions[self.player].locations:
-                    print("  - " + loc.name)
-                    print("  : " + str(loc.access_rule))
-
-
         self.set_completion_rule(rule)
 
     def fill_hook(self,
@@ -478,13 +466,8 @@ class NeonWhiteWorld(World):
 
         # now copy them over to the prog item pool in our new order
 
-        # print(len(indices), indices)
-        # print(len(sorted), sorted)
-        # print(len(items), items)
         for i, ind in enumerate(indices):
             progitempool[ind] = newitems[i + precollected]
-
-        # print(progitempool)
 
     def extend_hint_information(self, hint_data: dict[int, dict[int, str]]):
         playerdata = {}
@@ -497,8 +480,6 @@ class NeonWhiteWorld(World):
         hint_data[self.player] = playerdata
 
     def fill_slot_data(self):
-        # pprint(self.missions)
-
         extra: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
 
         dumps = json.dumps([LEVEL_INFO[x].id for x in self.ordered_levels], separators=(",", ":"))
@@ -530,9 +511,7 @@ class NeonWhiteWorld(World):
             options_to_show += ["total_ranks"]
 
         if self.options.card_types.value != CardTypes.option_global:
-            options_to_show += ["global_cards"]
-
-        print(f"OPTIONS: {({f: getattr(self.options, f).value for f in self.options.__class__.type_hints})}")
+            extra["global_cards_flags"] = int(self.global_cards)
 
         return {
             "options": self.options.as_dict(*options_to_show)
@@ -558,7 +537,7 @@ class NeonWhiteWorld(World):
 
         cardtypes = slot_data["options"]["card_types"]
         if cardtypes != CardTypes.option_global:
-            extra["global_cards"] = slot_data["options"]["global_cards"]
+            extra["global_cards_flags"] = slot_data["global_cards_flags"]
 
         return {
             "unlock_method": unlock,
@@ -567,8 +546,8 @@ class NeonWhiteWorld(World):
             "difficulty_execution": slot_data["options"]["difficulty_execution"],
             # "boof_shenanigans": slot_data["options"]["boof_shenanigans"],
             "starting_level_count": slot_data["options"]["starting_level_count"],
-            "gifts": slot_data["options"]["gifts"],
-            "sidequests": slot_data["options"]["sidequests"],
+            # "gifts": slot_data["options"]["gifts"],
+            # "sidequests": slot_data["options"]["sidequests"],
             "medal_select": slot_data["options"]["medal_select"],
             "card_types": cardtypes
         } | extra
