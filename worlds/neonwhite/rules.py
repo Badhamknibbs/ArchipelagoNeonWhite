@@ -213,7 +213,7 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
                 else:
                     res = reduce(or_, [x.to_rule(prefix, trimmed) for x in self.reqs]).resolve(world)
 
-                if inspect.isfunction(res.explain_json):
+                if inspect.ismethod(res.explain_json):
                     object.__setattr__(res, 'explain_json', partial(
                         explain_json,
                         res,
