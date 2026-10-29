@@ -1,4 +1,5 @@
 # pyright: reportUnannotatedClassAttribute=false
+# ruff: noqa: RUF012
 
 from dataclasses import dataclass
 
@@ -7,6 +8,7 @@ from Options import (
     DeathLink,
     DefaultOnToggle,
     ItemDict,
+    OptionGroup,
     OptionSet,
     PerGameCommonOptions,
     Range,
@@ -62,11 +64,13 @@ class Gifts(DefaultOnToggle):
     """
     Whether or not to make gifts checks.
     """
+    display_name = "Gifts"
 
 class Sidequests(DefaultOnToggle):
     """
     Whether or not to make sidequest completions checks.
     """
+    display_name = "Sidequests"
 
 class CardTypes(Choice):
     """
@@ -243,3 +247,38 @@ class NeonWhiteOptions(PerGameCommonOptions):
     death_link_res: DeathLinkResets
     bad_effects: Traps
     boof_shenanigans: BoofShenanigans
+
+option_groups = [
+    OptionGroup("Rule-related Options", [
+        KnowledgeDifficulty,
+        ExecutionDifficulty,
+        Goal
+    ]),
+    OptionGroup("Location Options", [
+        MedalSelect,
+        Gifts,
+        Sidequests
+    ]),
+    OptionGroup("Mission Unlocks", [
+        MissionUnlockMethod,
+        MissionCount,
+        TotalRanks,
+        RanksRequiredPercentage,
+        LevelGradient,
+        StartingLevelCount
+    ]),
+    OptionGroup("Item Options", [
+        CardTypes,
+        GlobalCards,
+        FillerWeights
+    ]),
+    OptionGroup("Death Link", [
+        DeathLink,
+        DeathLinkAmnesty,
+        DeathLinkResets
+    ]),
+    OptionGroup("(Currently useless)", [
+        BoofShenanigans,
+        Traps
+    ])
+]

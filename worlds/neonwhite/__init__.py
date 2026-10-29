@@ -1,5 +1,6 @@
 # pyright: reportUnannotatedClassAttribute=false
 # pyright: reportMatchNotExhaustive=false
+# ruff: noqa: RUF012
 
 import base64
 import itertools
@@ -39,6 +40,7 @@ from .options import (
     Goal,
     MissionUnlockMethod,
     NeonWhiteOptions,
+    option_groups,
 )
 from .regions import create_regions, level_rando
 from .rules import (
@@ -62,6 +64,8 @@ class NeonWhiteWeb(WebWorld):
     theme = "partyTime"
     bug_report_page = "https://github.com/Badhamknibbs/ArchipelagoNeonWhite/issues"
 
+    option_groups = option_groups
+
 class NeonWhiteWorld(World):
     """
     Neon White is a speedrunning FPS puzzle platformer made by freaks for freaks.
@@ -74,14 +78,14 @@ class NeonWhiteWorld(World):
     options_dataclass = NeonWhiteOptions
     web = NeonWhiteWeb()
 
-    item_name_to_id = {name: data.id for name, data in nw_items.items()}  # noqa: RUF012
+    item_name_to_id = {name: data.id for name, data in nw_items.items()}
 
     location_name_to_id = neon_white_get_locations()
 
     item_name_groups = nw_item_groups
     location_name_groups = checks_in_sets_lvl
 
-    requirements: dict[tuple[int, int], LevelRequirementSet] = {}  # noqa: RUF012
+    requirements: dict[tuple[int, int], LevelRequirementSet] = {}
     logic_json: Any = None
 
     ut_can_gen_without_yaml = True
@@ -311,7 +315,8 @@ class NeonWhiteWorld(World):
 
         # Add soul cards
         if self.options.card_types.value == CardTypes.option_global:
-            itempool += [self.create_item(card, card not in prog_cards) for card in get_items_from_category("Global Card")]
+            itempool += [self.create_item(card, card not in prog_cards)
+                for card in get_items_from_category("Global Card")]
         else:
             missions = self.missions
             if self.options.card_types.value == CardTypes.option_ingame_missions and not self.use_levels:
@@ -342,7 +347,7 @@ class NeonWhiteWorld(World):
                 # Make sure we add the neon ranks that we need
                 total_ranks_clamp: int = min(self.options.total_ranks.value, loc_count - len(itempool))
 
-                if (not getattr(self.multiworld, "re_gen_passthrough", {})):
+                if not self.ranks_required:
                     self.ranks_required = int(total_ranks_clamp * (self.options.ranks_required_percent.value / 100.0))
 
                 itempool += [self.create_item("Neon Rank", i >= self.ranks_required) for i in range(total_ranks_clamp)]
@@ -378,13 +383,14 @@ class NeonWhiteWorld(World):
         return ""
 
     def set_rules(self):
-        set_rules(self.multiworld, self, self.options)
+        set_rules(self, self.options)
         rule: CollectionRule | Rule[NeonWhiteWorld] | None = None
         match self.options.goal.value:
             case Goal.option_3bosses:
                 # intentionally fail if no medal select
-                if len(self.options.medal_select.value) == 0:
-                    raise OptionError("Not enough medals selected")
+                # EDIT: already checked in generate_early
+                # if len(self.options.medal_select.value) == 0:
+                #     raise OptionError("Not enough medals selected")
 
                 postreq = (self.requirement.make_rule("Absolution", self.medalmax) &
                         self.requirement.make_rule("The Third Temple", self.medalmax) &
@@ -413,8 +419,6 @@ class NeonWhiteWorld(World):
         # order every item to be as we want it to help fill gen
         # **keeping our items in the same general position across the multiworld**
 
-        # from pprint import pprint
-
         # grab all of our items
         indices: list[int]
         items: list[NWItem]
@@ -439,7 +443,8 @@ class NeonWhiteWorld(World):
                     newitems.append(grab(level))
         else:
             have = sum(x.name ==
-                ("Neon Rank" if self.options.unlock_method.value == MissionUnlockMethod.option_ranks else "Mission Unlock")
+                ("Neon Rank" if self.options.unlock_method.value == MissionUnlockMethod.option_ranks
+                    else "Mission Unlock")
                 for x in newitems)
 
             # sort all of the card abilities from most to least helpful
@@ -463,11 +468,19 @@ class NeonWhiteWorld(World):
                         newitems += [grab("Mission Unlock") for _ in range(i - have)]
                     have = i
 
-
         # now copy them over to the prog item pool in our new order
 
         for i, ind in enumerate(indices):
             progitempool[ind] = newitems[i + precollected]
+
+    @classmethod
+    def stage_post_fill(cls, multiworld: MultiWorld):
+        # turn the useful neon ranks into prog ones
+        # only after they've all been placed
+
+        for item in multiworld.itempool:
+            if item.game == "Neon White" and item.name == "Neon Rank":
+                item.classification = nw_items["Neon Rank"].classification
 
     def extend_hint_information(self, hint_data: dict[int, dict[int, str]]):
         playerdata = {}
@@ -498,9 +511,8 @@ class NeonWhiteWorld(World):
             ]
 
         options_to_show = [
-            # "start_inventory", "start_inventory_from_pool", # these do influence level order
             "difficulty_knowledge", "difficulty_execution", # "boof_shenanigans",
-            "medal_select", "gifts", "sidequests", "starting_level_count",
+            "medal_select", "gifts", "sidequests",
             "unlock_method", "goal", "card_types",
             "death_link"]
 
@@ -545,9 +557,6 @@ class NeonWhiteWorld(World):
             "difficulty_knowledge": slot_data["options"]["difficulty_knowledge"],
             "difficulty_execution": slot_data["options"]["difficulty_execution"],
             # "boof_shenanigans": slot_data["options"]["boof_shenanigans"],
-            "starting_level_count": slot_data["options"]["starting_level_count"],
-            # "gifts": slot_data["options"]["gifts"],
-            # "sidequests": slot_data["options"]["sidequests"],
             "medal_select": slot_data["options"]["medal_select"],
             "card_types": cardtypes
         } | extra

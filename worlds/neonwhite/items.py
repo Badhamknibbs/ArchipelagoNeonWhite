@@ -59,14 +59,14 @@ nw_items: dict[str, NWItemData] = {
         ItemClassification.filler),
 
     "Health Card": NWItemData("Filler", NWItem.misc_id + 51,
-        ItemClassification.filler),
+        ItemClassification.useful),
     "Ammo Card": NWItemData("Filler", NWItem.misc_id + 52,
-        ItemClassification.filler)
+        ItemClassification.useful)
 } | {
     f"{level}": NWItemData("Level", NWItem.level_id + i, ItemClassification.progression)
         for i, level in enumerate(LEVEL_INFO.keys())
 } | {
-    name: NWItemData("In-game Mission Card", NWItem.mission_card_id + id, NWItem.card_classification)
+    name: NWItemData("In-game Mission Card", NWItem.mission_card_id + id, ItemClassification.progression)
     for (name, id) in itertools.chain.from_iterable(
         [[(f"{mission.name} - {CAF.solo_to_string(card)}", (i * 100) + card.bit_length())
             for card in mission.cards]
@@ -74,7 +74,7 @@ nw_items: dict[str, NWItemData] = {
         ]
     )
 } | {
-    name: NWItemData("Generated Mission Card", NWItem.fission_card_id + id, NWItem.card_classification)
+    name: NWItemData("Generated Mission Card", NWItem.fission_card_id + id, ItemClassification.progression)
     for (name, id) in itertools.chain.from_iterable(
         [[(f"Mission {i + 1} - {CAF.solo_to_string(card)}", (i * 100) + card.bit_length())
             for card in CAF]

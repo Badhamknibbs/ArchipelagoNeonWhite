@@ -8,19 +8,69 @@ from operator import or_
 from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeAlias, final
 from weakref import WeakKeyDictionary, WeakValueDictionary
 
-from BaseClasses import CollectionState, Location, MultiWorld
+from BaseClasses import CollectionState, ItemClassification, Location
 from NetUtils import JSONMessagePart
 from rule_builder.rules import False_, Has, Rule, True_
 from typing_extensions import override
 
-from . import NeonWhiteOptions
 from .info import LEVEL_INFO, CardAbilityFlags, Medal
-from .options import (
-    MissionUnlockMethod,
-)
+from .options import MissionUnlockMethod, NeonWhiteOptions
 
 if TYPE_CHECKING:
     from . import NeonWhiteWorld
+
+def explain_json(rule: Rule.Resolved,
+    reqs: frozenset[CardAbilityFlags], prefix: str, globals: CardAbilityFlags,
+    state: CollectionState | None = None) -> list[JSONMessagePart]:
+        lines = list[JSONMessagePart]()
+        sortreq = sorted(reqs, key=CardAbilityFlags.bit_count)
+
+        if len(reqs) == 1:
+            lines.append({"type": "text", "text": "Have the following abilities:\n"})
+        else:
+            lines.append({"type": "text", "text": "Have one of the following sets of abilities:\n"})
+
+        allglobal = True
+        for req in sortreq:
+            if allglobal and req._value_ & globals._value_ != req._value_:
+                allglobal = False
+            lines.append({"type": "text", "text": "- "})
+
+            for x in req:
+                text = str(x)
+                color = "white"
+                if state is not None:
+                    item = (prefix if not x.has_(globals) else "") + str(x)
+                    color = "green" if state.has(item, rule.player) else "salmon"
+                lines.append({"type": "color", "text": text, "color": color})
+                lines.append({"type": "text", "text": ", "})
+
+            lines.pop()
+
+        if prefix and not allglobal:
+            noslash = prefix.split(" - ")[0]
+            lines.append({"type": "text", "text": "\nwhere all abilities "})
+
+            if globals:
+                lines.append({"type": "text", "text": "(except for "})
+                for x in globals:
+                    lines.append({"type": "item_name", "text": str(x), "flags": ItemClassification.progression})
+                    lines.append({"type": "text", "text": ", "})
+                lines.pop()
+                lines.append({"type": "text", "text": ") "})
+
+            lines.append({"type": "text", "text": "are for "})
+            lines.append({"type": "color", "text": noslash, "color": "bold;blue"})
+
+        return lines
+
+def explain_str(rule: Rule.Resolved, reqs: frozenset[CardAbilityFlags], prefix: str, globals: CardAbilityFlags,
+    state: CollectionState | None = None) -> str:
+        # nahhh
+        return "".join([
+            x["text"] # pyright: ignore[reportTypedDictNotRequiredAccess]
+            for x in explain_json(rule, reqs, prefix, globals, None) # no state for now
+        ])
 
 RES_F: TypeAlias = tuple[tuple[tuple[str, ...], "RES_F"], ...] | None
 RES_T: TypeAlias = deque[tuple[tuple[str, ...], "RES_F"]]
@@ -66,7 +116,7 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
         elif not first:
             self._rule = self._true
 
-        if True:
+        if False:
             # debug check
             total = reduce(CardAbilityFlags.or_, reqs, CardAbilityFlags.FistOnly)  # pyright: ignore[reportUnreachable]
             assert (total.has_(LEVEL_INFO[level].cards)
@@ -143,7 +193,7 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
             return self._resregistry[world]
 
         if self._rule is not None:
-            res = self._rule.Resolved(player=world.player)
+            res = self._rule.resolve(world) # docs say not to use Resolved :(
         elif self._built is None:
             self._built = self._make_rule(self.reqs)
             self._oreligible = True
@@ -165,12 +215,19 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
 
                 if inspect.isfunction(res.explain_json):
                     object.__setattr__(res, 'explain_json', partial(
-                        self.explain_json,
+                        explain_json,
+                        res,
                         self.reqs,
                         prefix,
                         trimmed
                     ))
-
+                    object.__setattr__(res, 'explain_str', partial(
+                        explain_str,
+                        res,
+                        self.reqs,
+                        prefix,
+                        trimmed
+                    ))
             elif trimmed == self._reqstotal or not prefix:
                 prefix = world.get_prefix(self.level)
                 trimmed = world.global_cards.and_(self._reqstotal)
@@ -190,11 +247,6 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
 
         self._resregistry[world] = res
         return res
-
-    @staticmethod
-    def explain_json(reqs: frozenset[CardAbilityFlags], prefix: str, globals: CardAbilityFlags,
-        rule: Rule.Resolved, state: CollectionState | None = None) -> list[JSONMessagePart]:
-            return [{'text': repr(r)} for r in reqs]
 
     class Resolved(Rule.Resolved):
         reqs: frozenset[CardAbilityFlags]
@@ -233,10 +285,14 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
 
         @override
         def explain_json(self, state: CollectionState | None = None) -> list[JSONMessagePart]:
-            return LevelReqRule.explain_json(self.reqs, self.prefix, self.globals, self, state)
+            return explain_json(self, self.reqs, self.prefix, self.globals, state)
+
+        @override
+        def explain_str(self, state: CollectionState | None = None) -> str:
+            return explain_str(self, self.reqs, self.prefix, self.globals, state)
 
         def __str__(self):
-            return str(self.built)
+            return explain_str(self, self.reqs, self.prefix, self.globals)
 
 # This only represents a single difficulty
 @final
@@ -339,7 +395,7 @@ def _set_rule(world: "NeonWhiteWorld", medal: Medal, level: str, location: Locat
     world.register_rule_dependencies(rule)
     location.access_rule = rule
 
-def set_rules(multiworld: MultiWorld, world: "NeonWhiteWorld", options: NeonWhiteOptions):
+def set_rules(world: "NeonWhiteWorld", options: NeonWhiteOptions):
     # Connect central heaven to every mission
     for i, mission in enumerate(world.missions):
         entrance = mission.regions[world.player].entrances[0]
@@ -357,7 +413,6 @@ def set_rules(multiworld: MultiWorld, world: "NeonWhiteWorld", options: NeonWhit
 
             if world.use_levels:
                 world.set_rule(level_region.entrances[0], Has(level.name))
-
 
             if not level.sidequest:
                 setters: dict[str, Callable[[Location]]] = {

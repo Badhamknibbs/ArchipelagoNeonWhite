@@ -20,7 +20,7 @@ def neon_white_get_locations() -> dict[str, int]:
     for mission in MISSION_INFO.values():
         level_id = 0
         for level in mission.levels:
-            loc_id = 0
+            loc_id = 1 # movement bronze breaks if this is 0
             if not level.sidequest:
                 for medal in MEDALS:
                     locations_dict[f"{level.name} {medal} Completion"] = mission_id + level_id + loc_id
