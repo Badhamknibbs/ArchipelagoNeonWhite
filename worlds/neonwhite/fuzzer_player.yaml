@@ -1,13 +1,15 @@
+# ~100% pass rate
+
 Neon White:
   goal: 3bosses
   difficulty_knowledge:
-    casual: 0
-    standard: 2
+    casual: 1
+    standard: 5
     expert: 10
     master: 2
   difficulty_execution:
-    casual: 0
-    standard: 2
+    casual: 1
+    standard: 5
     expert: 10
     master: 1
   unlock_method:
@@ -17,13 +19,13 @@ Neon White:
   mission_count:
     random-range-3-30: 1
   total_ranks:
-    random-range-low-50-200: 1
+    random-range-50-200: 1
   ranks_required_percent:
     random-range-10-80: 1
   level_gradient:
-    random-range-0-50: 1
+    random-range-0-70: 1
   starting_level_count:
-    random-range-3-5: 1
+    random-range-low-3-10: 1
   medal_select:
     - bronze
     - ace
