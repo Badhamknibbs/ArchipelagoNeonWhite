@@ -10,7 +10,7 @@ from collections import Counter
 from collections.abc import Callable
 from functools import reduce
 from operator import or_
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from BaseClasses import (
     CollectionRule,
@@ -18,6 +18,7 @@ from BaseClasses import (
     ItemClassification,
     Location,
     MultiWorld,
+    Region,
     Tutorial,
 )
 from Options import Option, OptionError
@@ -38,12 +39,14 @@ from .options import (
     CardTypes,
     ExecutionDifficulty,
     Goal,
+    KnowledgeDifficulty,
     MissionUnlockMethod,
     NeonWhiteOptions,
     option_groups,
 )
 from .regions import create_regions, level_rando
 from .rules import (
+    LevelReqRule,
     LevelRequirementSet,
     Medal,
     get_mission_rank_required,
@@ -53,14 +56,16 @@ from .rules import (
 
 
 class NeonWhiteWeb(WebWorld):
-    tutorials = [Tutorial(
+    setup_en = Tutorial(
         "Multiworld Setup Guide",
         "A guide to setting up Neon White integration for Archipelago multiworld games.",
         "English",
         "setup_en.md",
         "setup/en",
         ["Badhamknibbs", "stxticOVFL"]
-    )]
+    )
+
+    tutorials = [setup_en]
     theme = "partyTime"
     bug_report_page = "https://github.com/Badhamknibbs/ArchipelagoNeonWhite/issues"
 
@@ -85,10 +90,12 @@ class NeonWhiteWorld(World):
     item_name_groups = nw_item_groups
     location_name_groups = checks_in_sets_lvl
 
-    requirements: dict[tuple[int, int], LevelRequirementSet] = {}
+    requirements: ClassVar[dict[tuple[int, int], LevelRequirementSet]] = {}
+
     logic_json: Any = None
 
     ut_can_gen_without_yaml = True
+    glitches_item_name = "Master Logic"
 
     def __init__(self, multiworld: MultiWorld, player: int):
         super().__init__(multiworld, player)
@@ -103,6 +110,8 @@ class NeonWhiteWorld(World):
         self.missions_vanilla: tuple[MissionInfo, ...] = ()
 
         self.get_prefix: Callable[[str], str] = lambda _: ""
+
+        self.hint_data: dict[int, str] = {}
 
     def generate_early(self) -> None:
         if not self.player_name.isascii():
@@ -169,6 +178,18 @@ class NeonWhiteWorld(World):
 
                 for card in mygcards:
                     self.global_cards |= CardAbilityFlags(1 << (nw_items[csfold[card.casefold()]].id % 100 - 1))
+        else:
+            req_select = (KnowledgeDifficulty.option_master, ExecutionDifficulty.option_master)
+            if (req_select not in NeonWhiteWorld.requirements):
+                NeonWhiteWorld.requirements[req_select] = import_json_to_data(self,
+                    KnowledgeDifficulty.option_master, ExecutionDifficulty.option_master)
+            mmlogic = NeonWhiteWorld.requirements[req_select].rules
+
+            for level, rules in self.requirement.rules.items():
+                for i, rule in enumerate(rules):
+                    glitch = mmlogic[level][i] # the game's mostly abt it these days
+                    if rule is not glitch:
+                        rule._utglitched = glitch
 
     def create_item(self, name: str, force_useful: bool = False) -> NWItem:
         classific = ItemClassification.useful if force_useful else nw_items[name].classification
@@ -186,7 +207,7 @@ class NeonWhiteWorld(World):
 
             prec = self.multiworld.precollected_items[self.player]
             starters = set[str]()
-            early = list[str]()
+            early = list[tuple[str, int]]()
 
             for item in prec:
                 if "Card" in nw_items[item.name].category:
@@ -199,9 +220,31 @@ class NeonWhiteWorld(World):
                 total_level_count += 1
                 if level.name == "Absolution":
                     continue
-                levels[level.name] = self.requirement.get_useful_items(self, level.name, None) - starters
-                if not levels[level.name] and (not level.giftless or not self.options.gifts):
-                    early.append(level.name)
+                fistonly = 0
+                reqset = set[str]()
+
+                if level.sidequest:
+                    reqset = self.requirement.get_useful_items(self, level.name, self.medalmax)
+                    if not reqset:
+                        fistonly = 1
+                else:
+                    for medal in self.medals:
+                        items4m = self.requirement.get_useful_items(self, level.name, medal) - starters
+                        if not items4m:
+                            fistonly += 1
+                        else:
+                            reqset |= items4m
+
+                    if self.options.gifts and not level.giftless:
+                        items4m = self.requirement.get_useful_items(self, level.name, Medal.Gift) - starters
+                        if not items4m:
+                            fistonly += 1
+                        else:
+                            reqset |= items4m
+
+                levels[level.name] = reqset
+                if fistonly:
+                    early.append((level.name, fistonly))
 
             # preshuffle that shit
             litems = list(levels.items())
@@ -239,15 +282,6 @@ class NeonWhiteWorld(World):
                         if c.startswith(f"Mission {i + 1}"):
                             cards.add(c.split(' - ')[1])
 
-                    merge = (cards - global_filter) | starters
-                    uniq = set(early)
-                    for lname, lcards in levels.items():
-                        if lname in uniq:
-                            continue
-                        level = LEVEL_INFO[lname]
-                        if lcards.issubset(merge) and (not level.giftless or not self.options.gifts):
-                            early.append(lname)
-
                     for l in level_rando(self, levels.copy(), cards, level_count):
                         levels.pop(l, None)
                         self.ordered_levels.append(l)
@@ -263,14 +297,16 @@ class NeonWhiteWorld(World):
 
             cutoff = min(self.options.starting_level_count.value, len(early))
             self.random.shuffle(early)
-            early = early[:cutoff]
 
-            self.ordered_levels = early + [x for x in self.ordered_levels if x not in early]
+            early = sorted(early, key=lambda x: -x[1])[:cutoff]
+            earlyl = [name for name, _ in early]
+
+            self.ordered_levels = earlyl + [x for x in self.ordered_levels if x not in earlyl]
 
         if self.use_levels:
-            early = [x for x in self.ordered_levels[:self.options.starting_level_count.value]]
+            earlyl = [x for x in self.ordered_levels[:self.options.starting_level_count.value]]
 
-            for x in early:
+            for x in earlyl:
                 self.multiworld.push_precollected(self.create_item(x))
 
             return # we're fully done here, rest of the code is missions generation
@@ -363,6 +399,15 @@ class NeonWhiteWorld(World):
         if len(itempool) > loc_count:
             raise OptionError(f"Settings create more items ({len(itempool)}) than there are locations ({loc_count})")
 
+        # print(f"LOCATION COUNT: {loc_count}")
+        # print(f"PROG/USEFUL:    {len(itempool)}/{loc_count} - {len(itempool)/loc_count:.2%}")
+        # justprog = sum(1 for x in itempool if x.advancement)
+        # print(f"JUST PROG:      {justprog}/{loc_count} - {justprog/loc_count:.2%}")
+        # print(f"ALL RANKS:      {total_ranks_clamp}/{loc_count} - {total_ranks_clamp/loc_count:.2%}")
+        # print(f"NONRANKS:       {len(itempool)-total_ranks_clamp}/{loc_count} - {(len(itempool)-total_ranks_clamp)/loc_count:.2%}")
+        # print(f"FILLER:         {loc_count-len(itempool)}/{loc_count} - {(loc_count-len(itempool))/loc_count:.2%}")
+        # raise Exception("Whgat fruits this")
+
         # Fill the rest with filler
         itempool += [self.create_item(x) for x in self.get_filler_rando(k=loc_count - len(itempool))]
 
@@ -411,6 +456,21 @@ class NeonWhiteWorld(World):
 
         self.set_completion_rule(rule)
 
+        # we for sure don't need the region cache anymore
+        # let's get it now before we clean up
+        for mission in self.missions:
+            for level in mission.levels:
+                for loc in level.regions[self.player].get_locations():
+                    self.hint_data[loc.address] = mission.alias or mission.name
+                del level.regions[self.player]
+            del mission.regions[self.player]
+
+    @classmethod
+    def stage_set_rules(cls, _: MultiWorld):
+        # all of the rules have been resolved
+        # we don't want to play with them anymore......
+        LevelReqRule.nuke_all()
+
     def fill_hook(self,
             progitempool: list[Item],
             usefulitempool: list[Item],
@@ -422,8 +482,14 @@ class NeonWhiteWorld(World):
         # grab all of our items
         indices: list[int]
         items: list[NWItem]
-        indices, items = [[*l] for l in zip(*[(i, item) for i, item in enumerate(progitempool)
-                                if item.player == self.player])]
+
+        filtered = [(i, item) for i, item in enumerate(progitempool)
+                                if item.player == self.player]
+        if not filtered:
+            self.requirement.nuke_cache(self)
+            return
+
+        indices, items = [[*l] for l in zip(*filtered)]
 
         def grab(itemname: str):
             i = next(i for (i, item) in enumerate(items) if item.name == itemname)
@@ -473,6 +539,9 @@ class NeonWhiteWorld(World):
         for i, ind in enumerate(indices):
             progitempool[ind] = newitems[i + precollected]
 
+        # we no longer need the get_useful_items cache, nuke that
+        self.requirement.nuke_cache(self)
+
     @classmethod
     def stage_post_fill(cls, multiworld: MultiWorld):
         # turn the useful neon ranks into prog ones
@@ -483,14 +552,7 @@ class NeonWhiteWorld(World):
                 item.classification = nw_items["Neon Rank"].classification
 
     def extend_hint_information(self, hint_data: dict[int, dict[int, str]]):
-        playerdata = {}
-
-        for mission in self.missions:
-            for level in mission.levels:
-                for loc in level.regions[self.player].get_locations():
-                    playerdata[loc.address] = mission.alias or mission.name
-
-        hint_data[self.player] = playerdata
+        hint_data[self.player] = self.hint_data
 
     def fill_slot_data(self):
         extra: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
@@ -560,3 +622,21 @@ class NeonWhiteWorld(World):
             "medal_select": slot_data["options"]["medal_select"],
             "card_types": cardtypes
         } | extra
+
+    def custom_ut_sort(self, region_label: str, location_label: str) -> str | int:
+        # so i realize i could cheat and just do LLLX, where L is level and X is the medal
+        # but it just feels more right to do MLLX where M is mission as well
+        # so this does do a bit of extra code for a nicer result that could maybe be used later
+
+        medal = self.get_location(location_label).address % 10  # pyright: ignore[reportOptionalOperand]
+        level = self.get_region(region_label)
+        mission: Region = level.entrances[0].parent_region  # pyright: ignore[reportAssignmentType]
+
+        leveli = next((i for i, e in enumerate(mission.exits)
+            if e.connected_region == level))
+
+        missioni = next(i for i, m in enumerate(self.missions)
+            if mission.name in {m.alias, m.name})
+
+        total = missioni * 1000 + leveli * 10 + medal
+        return total

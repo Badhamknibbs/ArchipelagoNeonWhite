@@ -12,7 +12,7 @@ Neon White:
   ranks_required_percent: 80
   card_types: ingame_missions
   level_gradient: 30
-  starting_level_count: 5
+  starting_level_count: 3
   mission_count: 11
   global_cards:
     - Katana

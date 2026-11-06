@@ -6,11 +6,11 @@ from functools import partial, reduce
 from math import floor
 from operator import or_
 from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeAlias, final
-from weakref import WeakKeyDictionary, WeakValueDictionary
+from weakref import WeakValueDictionary
 
 from BaseClasses import CollectionState, ItemClassification, Location
 from NetUtils import JSONMessagePart
-from rule_builder.rules import False_, Has, Rule, True_
+from rule_builder.rules import False_, Has, Or, Rule, True_
 from typing_extensions import override
 
 from .info import LEVEL_INFO, CardAbilityFlags, Medal
@@ -26,15 +26,15 @@ def explain_json(rule: Rule.Resolved,
         sortreq = sorted(reqs, key=CardAbilityFlags.bit_count)
 
         if len(reqs) == 1:
-            lines.append({"type": "text", "text": "Have the following abilities:\n"})
+            lines.append({"type": "text", "text": "Have the following abilities:"})
         else:
-            lines.append({"type": "text", "text": "Have one of the following sets of abilities:\n"})
+            lines.append({"type": "text", "text": "Have one of the following sets of abilities:"})
 
         allglobal = True
         for req in sortreq:
             if allglobal and req._value_ & globals._value_ != req._value_:
                 allglobal = False
-            lines.append({"type": "text", "text": "- "})
+            lines.append({"type": "text", "text": "\n- "})
 
             for x in req:
                 text = str(x)
@@ -79,11 +79,12 @@ RES_T: TypeAlias = deque[tuple[tuple[str, ...], "RES_F"]]
 class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
     reqs: frozenset[CardAbilityFlags] = dataclasses.field(init=False)
     level: str = dataclasses.field(init=False)
+    _utglitched: "LevelReqRule | None" = dataclasses.field(init=False)
     _rule: Rule | None = dataclasses.field(init=False)
     _reqstotal: CardAbilityFlags = dataclasses.field(init=False)
     _built: RES_F | None = dataclasses.field(init=False)
     _oreligible: bool = dataclasses.field(init=False)
-    _resregistry: WeakKeyDictionary = dataclasses.field(init=False)
+    _resregistry: dict["NeonWhiteWorld", Rule.Resolved] = dataclasses.field(init=False)
 
     # https://stackoverflow.com/a/71563134
     _registry: ClassVar[WeakValueDictionary] = WeakValueDictionary()
@@ -94,6 +95,12 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
         cls._registry[args] = i
         return i
 
+    @classmethod
+    def nuke_all(cls):
+        for x in cls._registry.values():
+            x._resregistry.clear()
+        cls._registry.clear()
+
     _true: ClassVar[Rule] = True_()
     _false: ClassVar[Rule] = False_()
 
@@ -102,12 +109,13 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
             return
         self.reqs = reqs
         self.level = level
+        self._utglitched = None
         self._reqstotal = CardAbilityFlags.FistOnly
         for x in reqs:
             self._reqstotal = self._reqstotal.or_(x)
         self._built = None
         self._oreligible = True
-        self._resregistry = WeakKeyDictionary()
+        self._resregistry = {}
 
         self._rule = None
         first = next(iter(self.reqs), None)
@@ -116,11 +124,8 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
         elif not first:
             self._rule = self._true
 
-        if False:
-            # debug check
-            total = reduce(CardAbilityFlags.or_, reqs, CardAbilityFlags.FistOnly)  # pyright: ignore[reportUnreachable]
-            assert (total.has_(LEVEL_INFO[level].cards)
-                ), f"{level}'s reqs are {total!r}, but only {LEVEL_INFO[level].cards!r} is valid"
+        assert (self._reqstotal.has_(LEVEL_INFO[level].cards)
+            ), f"{level}'s reqs are {self._reqstotal!r}, but only {LEVEL_INFO[level].cards!r} is valid"
 
     @staticmethod
     def _mkrl_key(itm: tuple[Any, set[CardAbilityFlags]]): return -len(itm[1])
@@ -141,10 +146,8 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
 
         res: RES_T = deque()
 
-        key=LevelReqRule._mkrl_key
-
         while True:
-            s = sorted(cats.items(), key=key)
+            s = sorted(cats.items(), key=LevelReqRule._mkrl_key)
 
             catr = s[0][1].copy()
             catrlen = len(catr)
@@ -245,6 +248,14 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
                     trimmed,
                     player=world.player)
 
+        if self._utglitched is not None:
+            before = res
+            utreq = (Has("Master Logic") & self._utglitched).resolve(world)
+
+            res = Or.from_resolved(world, [res, utreq])
+            object.__setattr__(res, 'explain_json', before.explain_json)
+            object.__setattr__(res, 'explain_str', before.explain_str)
+
         self._resregistry[world] = res
         return res
 
@@ -299,17 +310,17 @@ class LevelReqRule(Rule["NeonWhiteWorld"], game="Neon White"):
 class LevelRequirementSet:
     def __init__(self):
         # String is the level name, list is 0..5, in order: dev,ace,gold,silver,bronze,gift
-        self.requirements = dict[str, list[LevelReqRule]]()
-        self._itemcache: WeakKeyDictionary[NeonWhiteWorld, dict[str, dict[Medal, set[str]]]] = WeakKeyDictionary()
+        self.rules = dict[str, list[LevelReqRule]]()
+        self._itemcache: dict[NeonWhiteWorld, dict[str, dict[Medal, set[str]]]] = {}
 
     def nuke_cache(self, world: "NeonWhiteWorld"):
         if world in self._itemcache:
-            self._itemcache[world].clear()
+            del self._itemcache[world]
 
     def make_rule(self, level: str, medal: Medal) -> LevelReqRule:
         medal_idx = int(medal) if medal == Medal.Gift else 4 - int(medal)
 
-        return self.requirements[level][medal_idx]
+        return self.rules[level][medal_idx]
 
     def get_useful_items(self, world: "NeonWhiteWorld", level: str, medal: Medal | None) -> set[str]:
         if medal is None:
@@ -325,7 +336,7 @@ class LevelRequirementSet:
             return cache[medal]
 
         medal_idx = int(medal) if medal == Medal.Gift else 4 - int(medal)
-        flags = self.requirements[level][medal_idx].reqs
+        flags = self.rules[level][medal_idx].reqs
         if not flags:
             self._itemcache.setdefault(world, {}).setdefault(level, {})[medal] = set()
             return set()
@@ -343,7 +354,7 @@ class LevelRequirementSet:
         return cards
 
     def __str__(self) -> str:
-        return f"LevelReqRule({self.requirements})"
+        return f"LevelReqRule({self.rules})"
 
 def import_json_to_data(world: "NeonWhiteWorld", know_diff: int, exec_diff: int) -> LevelRequirementSet:
     new_requirements = LevelRequirementSet()
@@ -370,7 +381,7 @@ def import_json_to_data(world: "NeonWhiteWorld", know_diff: int, exec_diff: int)
 
                     solutions[i].add(reqs)
 
-        new_requirements.requirements[entry] = [LevelReqRule(frozenset(x), entry) for x in solutions]
+        new_requirements.rules[entry] = [LevelReqRule(frozenset(x), entry) for x in solutions]
     return new_requirements
 
 # Actual functions related to rules start here

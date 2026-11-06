@@ -112,11 +112,12 @@ class MissionUnlockMethod(Choice):
 class StartingLevelCount(Range):
     """
     The amount of Levels for you to start with for Levels unlock method.
-    This also influences how many fist-only levels are added early into the level pool for other unlock methods.
+    This prioritizes starter item checks above all else to prevent a restrictive start.
+    This also influences early levels in a similar way for missions in the other modes.
     """
     display_name = "Starting Level Count"
     range_start = 1
-    default = 5
+    default = 3
     range_end = 10
 
 class MedalSelect(OptionSet):

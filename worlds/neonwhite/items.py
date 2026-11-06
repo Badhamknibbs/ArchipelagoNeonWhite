@@ -61,7 +61,9 @@ nw_items: dict[str, NWItemData] = {
     "Health Card": NWItemData("Filler", NWItem.misc_id + 51,
         ItemClassification.useful),
     "Ammo Card": NWItemData("Filler", NWItem.misc_id + 52,
-        ItemClassification.useful)
+        ItemClassification.useful),
+
+    "Master Logic": NWItemData("UT", 100, ItemClassification.progression),
 } | {
     f"{level}": NWItemData("Level", NWItem.level_id + i, ItemClassification.progression)
         for i, level in enumerate(LEVEL_INFO.keys())
