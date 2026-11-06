@@ -25,6 +25,13 @@ def explain_json(rule: Rule.Resolved,
         lines = list[JSONMessagePart]()
         sortreq = sorted(reqs, key=CardAbilityFlags.bit_count)
 
+        def check(x: CardAbilityFlags):
+            item = (prefix if not x.has_(globals) else "") + str(x)
+            return state.has(item, rule.player)  # pyright: ignore[reportOptionalMemberAccess]
+
+        if state is not None:
+            sortreq = sorted(sortreq, key=lambda x: sum(-1 for req in x if check(req)))
+
         if len(reqs) == 1:
             lines.append({"type": "text", "text": "Have the following abilities:"})
         else:
@@ -36,7 +43,12 @@ def explain_json(rule: Rule.Resolved,
                 allglobal = False
             lines.append({"type": "text", "text": "\n- "})
 
-            for x in req:
+            if state is not None:
+                sortireq = sorted(req, key=lambda x: 1 if not check(x) else 0)
+            else:
+                sortireq = req
+
+            for x in sortireq:
                 text = str(x)
                 color = "white"
                 if state is not None:
